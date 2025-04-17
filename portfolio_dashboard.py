@@ -37,6 +37,12 @@ except ImportError:
     from trading_bot.backtesting.backtester import Backtester
     AutomatedBacktester = None
 
+# Import the autonomous ML backtesting system
+from trading_bot.backtesting import (
+    initialize_ml_backtesting,
+    register_ml_backtest_endpoints
+)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -51,6 +57,9 @@ portfolio = None
 # Create a global backtesting learner and results
 backtest_learner = None
 backtest_results = None
+
+# Global variables
+news_fetcher = None
 
 def initialize_portfolio():
     """Initialize portfolio with sample data."""
@@ -414,6 +423,16 @@ def find_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('127.0.0.1', 0))
         return s.getsockname()[1]
+
+def initialize_news_fetcher():
+    """Initialize the news fetcher with caching."""
+    global news_fetcher
+    
+    from app import NewsFetcher
+    news_fetcher = NewsFetcher()
+    news_fetcher.start()
+    logger.info("News fetcher initialized")
+    return news_fetcher
 
 # Create HTML template
 @app.route('/')
@@ -1611,9 +1630,42 @@ def run_backtest():
             'error': str(e)
         }), 500
 
+@app.route('/api/autonomous-ml-backtesting/status')
+def get_ml_backtesting_status():
+    """Return status information about the ML backtesting system."""
+    from trading_bot.backtesting.ml_optimizer import MLStrategyOptimizer
+    
+    try:
+        # Create a temporary optimizer to read model status
+        optimizer = MLStrategyOptimizer()
+        
+        return jsonify({
+            'available': True,
+            'model_version': optimizer.model_version,
+            'last_trained': optimizer.last_trained.isoformat() if optimizer.last_trained else None,
+            'strategy_count': len(optimizer.strategy_performance)
+        })
+    except Exception as e:
+        logger.error(f"Error getting ML backtesting status: {str(e)}")
+        return jsonify({
+            'available': False,
+            'error': str(e)
+        })
+
 if __name__ == '__main__':
     # Initialize portfolio with sample data
     initialize_portfolio()
+    
+    # Initialize news fetcher
+    initialize_news_fetcher()
+    
+    # Initialize ML backtesting system
+    try:
+        initialize_ml_backtesting(news_fetcher)
+        register_ml_backtest_endpoints(app)
+        logger.info("ML backtesting system initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize ML backtesting system: {str(e)}")
     
     # Run with the specified port
     port = 8080
