@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BenBot Dashboard</title>
+    <style>
+        /* Base Styles */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            color: #2c3e50;
+        }
+        
+        /* Navigation Styles */
+        .top-nav {
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            height: 60px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .nav-links {
+            display: flex;
+            align-items: center;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: 0 15px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.3s;
+        }
+        
+        .nav-link:hover {
+            background-color: #34495e;
+        }
+        
+        .nav-link.active {
+            background-color: #3498db;
+        }
+        
+        /* Main Content Styles */
+        .main-content {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        
+        .page-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            padding: 25px;
+            margin-bottom: 25px;
+            border: 1px solid #edf2f7;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 20px;
+            border: 1px solid #edf2f7;
+            transition: transform 0.3s ease;
+            position: relative;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .metric-title {
+            font-size: 15px;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .info-icon {
+            margin-left: 5px;
+            color: #95a5a6;
+            font-size: 14px;
+            cursor: help;
+        }
+        
+        .tooltip {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #34495e;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            z-index: 100;
+            width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        
+        .info-icon:hover + .tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .metric-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+        
+        .positive {
+            color: #2ecc71;
+        }
+        
+        .negative {
+            color: #e74c3c;
+        }
+        
+        .neutral {
+            color: #3498db;
+        }
+        
+        /* Tab Navigation Styles */
+        .tab-navigation {
+            display: flex;
+            border-bottom: 1px solid #ecf0f1;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        
+        .tab-button {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 15px;
+            color: #7f8c8d;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab-button:hover {
+            color: #3498db;
+        }
+        
+        .tab-button.active {
+            color: #3498db;
+            border-bottom-color: #3498db;
+            font-weight: 500;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Pages Container */
+        .page {
+            display: none;
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        /* Table Styles */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .table th, .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #34495e;
+        }
+        
+        .table tr:hover {
+            background-color: #f9f9f9;
+        }
+        
+        /* Risk Alert Styles */
+        .risk-alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        
+        .risk-alert.high {
+            background-color: #ffebee;
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .risk-alert.medium {
+            background-color: #fff3e0;
+            border-left: 4px solid #f39c12;
+        }
+        
+        .risk-alert.low {
+            background-color: #e8f5e9;
+            border-left: 4px solid #2ecc71;
+        }
+        
+        /* Loading indicator */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .loading::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ddd;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Floating Chat Styles */
+        .floating-chat {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+            max-height: 500px;
+        }
+        
+        .chat-header {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 10px 10px 0 0;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-header h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        
+        .chat-toggle {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .chat-body {
+            display: flex;
+            flex-direction: column;
+            height: 350px;
+            overflow: hidden;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        
+        .chat-input {
+            display: flex;
+            padding: 10px;
+            background-color: white;
+            border-top: 1px solid #edf2f7;
+            border-radius: 0 0 10px 10px;
+        }
+        
+        .chat-input textarea {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+            font-family: inherit;
+            min-height: 40px;
+            max-height: 80px;
+        }
+        
+        .chat-input button {
+            margin-left: 10px;
+            padding: 0 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .chat-input button:hover {
+            background-color: #2980b9;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .message-user {
+            margin-left: auto;
+            background-color: #3498db;
+            color: white;
+            border-radius: 15px 15px 0 15px;
+            padding: 10px 15px;
+        }
+        
+        .message-bot {
+            margin-right: auto;
+            background-color: white;
+            color: #2c3e50;
+            border-radius: 15px 15px 15px 0;
+            padding: 10px 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .message-timestamp {
+            font-size: 11px;
+            color: #95a5a6;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .chat-minimized .chat-body {
+            display: none;
+        }
+        
+        .message-bot.thinking {
+            background-color: #f5f5f5;
+            padding: 10px 15px;
+        }
+        
+        .message-bot.thinking::after {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-left: 5px;
+            animation: thinking 1.4s infinite both;
+            background-color: #3498db;
+            border-radius: 50%;
+        }
+        
+        @keyframes thinking {
+            0%, 80%, 100% { transform: scale(0); opacity: 0; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .metrics {
+                grid-template-columns: 1fr;
+            }
+            
+            .floating-chat {
+                width: 90%;
+                max-width: 350px;
+                right: 5%;
+                bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <div class="top-nav">
+        <div class="nav-brand">BenBot Dashboard</div>
+        <div class="nav-links">
+            <a href="#dashboard" class="nav-link active" onclick="showPage('dashboard')">Dashboard</a>
+            <a href="#backtesting" class="nav-link" onclick="showPage('backtesting')">Backtesting</a>
+            <a href="#paper-trading" class="nav-link" onclick="showPage('paper-trading')">Paper Trading</a>
+            <a href="#live-trading" class="nav-link" onclick="showPage('live-trading')">Live Trading</a>
+            <a href="#trades" class="nav-link" onclick="showPage('trades')">Trades</a>
+            <a href="#news" class="nav-link" onclick="showPage('news')">News</a>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page active">
+            <h1 class="page-title">Dashboard</h1>
+            
+            <!-- Subcategory Tabs -->
+            <div class="tab-navigation">
+                <button class="tab-button active" onclick="showTab('dashboard', 'overview')">Overview</button>
+                <button class="tab-button" onclick="showTab('dashboard', 'strategy-performance')">Strategy Performance</button>
+                <button class="tab-button" onclick="showTab('dashboard', 'positions')">Current Positions</button>
+                <button class="tab-button" onclick="showTab('dashboard', 'risk-monitor')">Risk Monitor</button>
+            </div>
+            
+            <!-- Overview Tab Content -->
+            <div id="dashboard-overview" class="tab-content active">
+                <div class="card">
+                    <h2>Portfolio Overview</h2>
+                    <div class="metrics" id="portfolio-metrics">
+                        <div class="loading"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Strategy Performance Tab Content -->
+            <div id="dashboard-strategy-performance" class="tab-content">
+                <div class="card">
+                    <h2>Strategy Performance</h2>
+                    <table class="table" id="strategy-table">
+                        <thead>
+                            <tr>
+                                <th>Strategy</th>
+                                <th>Allocation</th>
+                                <th>Return</th>
+                                <th>Sharpe</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="loading"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Current Positions Tab Content -->
+            <div id="dashboard-positions" class="tab-content">
+                <div class="card">
+                    <h2>Current Positions</h2>
+                    <table class="table" id="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Strategy</th>
+                                <th>Type</th>
+                                <th>Entry Price</th>
+                                <th>Current Price</th>
+                                <th>P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="6" class="loading"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Risk Monitor Tab Content -->
+            <div id="dashboard-risk-monitor" class="tab-content">
+                <div class="card">
+                    <h2>Risk Monitor</h2>
+                    <div class="metrics" id="risk-metrics">
+                        <div class="loading"></div>
+                    </div>
+                    
+                    <h3>Risk Alerts</h3>
+                    <div id="risk-alerts">
+                        <div class="loading"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Backtesting Page -->
+        <div id="backtesting" class="page">
+            <h1 class="page-title">Backtesting</h1>
+            
+            <!-- Subcategory Tabs -->
+            <div class="tab-navigation">
+                <button class="tab-button active" onclick="showTab('backtesting', 'strategies')">Strategies</button>
+                <button class="tab-button" onclick="showTab('backtesting', 'performance')">Performance</button>
+                <button class="tab-button" onclick="showTab('backtesting', 'optimization')">Optimization</button>
+                <button class="tab-button" onclick="showTab('backtesting', 'comparison')">Comparison</button>
+            </div>
+            
+            <!-- Strategies Tab Content -->
+            <div id="backtesting-strategies" class="tab-content active">
+                <div class="card">
+                    <h2>Backtesting Strategies</h2>
+                    <p>Select a strategy to backtest or create a new one.</p>
+                    
+                    <table class="table">
+                        <tr>
+                            <th>Strategy</th>
+                            <th>Description</th>
+                            <th>Last Run</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                        <tr>
+                            <td>Momentum Alpha</td>
+                            <td>Multi-timeframe momentum with volatility filter</td>
+                            <td>2023-04-14</td>
+                            <td class="positive">Complete</td>
+                            <td><button class="tab-button">Run</button></td>
+                        </tr>
+                        <tr>
+                            <td>Mean Reversion Beta</td>
+                            <td>Statistical arbitrage with regime filter</td>
+                            <td>2023-04-12</td>
+                            <td class="positive">Complete</td>
+                            <td><button class="tab-button">Run</button></td>
+                        </tr>
+                        <tr>
+                            <td>Trend Ensemble</td>
+                            <td>Ensemble of 5 trend indicators with ML overlay</td>
+                            <td>2023-04-10</td>
+                            <td class="negative">Failed</td>
+                            <td><button class="tab-button">Run</button></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Other tabs for Backtesting would go here -->
+            <div id="backtesting-performance" class="tab-content">
+                <div class="card">
+                    <h2>Backtest Performance</h2>
+                    <p>Performance analysis for your backtested strategies.</p>
+                    <!-- Performance metrics would go here -->
+                </div>
+            </div>
+            
+            <div id="backtesting-optimization" class="tab-content">
+                <div class="card">
+                    <h2>Strategy Optimization</h2>
+                    <p>Optimize your strategy parameters for better performance.</p>
+                    <!-- Optimization tools would go here -->
+                </div>
+            </div>
+            
+            <div id="backtesting-comparison" class="tab-content">
+                <div class="card">
+                    <h2>Strategy Comparison</h2>
+                    <p>Compare performance between different strategies.</p>
+                    <!-- Comparison tools would go here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Paper Trading Page -->
+        <div id="paper-trading" class="page">
+            <h1 class="page-title">Paper Trading</h1>
+            
+            <!-- Subcategory Tabs -->
+            <div class="tab-navigation">
+                <button class="tab-button active" onclick="showTab('paper-trading', 'account')">Account</button>
+                <button class="tab-button" onclick="showTab('paper-trading', 'positions')">Positions</button>
+                <button class="tab-button" onclick="showTab('paper-trading', 'orders')">Orders</button>
+                <button class="tab-button" onclick="showTab('paper-trading', 'performance')">Performance</button>
+            </div>
+            
+            <!-- Account Tab Content -->
+            <div id="paper-trading-account" class="tab-content active">
+                <div class="card">
+                    <h2>Paper Trading Account</h2>
+                    <div class="metrics">
+                        <div class="metric-card">
+                            <div class="metric-title">Account Value</div>
+                            <div class="metric-value">$105,234.57</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">Available Cash</div>
+                            <div class="metric-value">$42,156.89</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">P&L (Today)</div>
+                            <div class="metric-value positive">+$876.42</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">P&L (Total)</div>
+                            <div class="metric-value positive">+$5,234.57</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Other tabs for Paper Trading would go here -->
+            <div id="paper-trading-positions" class="tab-content">
+                <div class="card">
+                    <h2>Paper Trading Positions</h2>
+                    <p>Current positions in your paper trading account.</p>
+                    <!-- Position data would go here -->
+                </div>
+            </div>
+            
+            <div id="paper-trading-orders" class="tab-content">
+                <div class="card">
+                    <h2>Paper Trading Orders</h2>
+                    <p>Order history and pending orders.</p>
+                    <!-- Order data would go here -->
+                </div>
+            </div>
+            
+            <div id="paper-trading-performance" class="tab-content">
+                <div class="card">
+                    <h2>Paper Trading Performance</h2>
+                    <p>Performance metrics for your paper trading account.</p>
+                    <!-- Performance metrics would go here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Live Trading Page -->
+        <div id="live-trading" class="page">
+            <h1 class="page-title">Live Trading</h1>
+            
+            <div class="tab-navigation">
+                <button class="tab-button active" onclick="showTab('live-trading', 'dashboard')">Dashboard</button>
+                <button class="tab-button" onclick="showTab('live-trading', 'positions')">Positions</button>
+                <button class="tab-button" onclick="showTab('live-trading', 'orders')">Orders</button>
+                <button class="tab-button" onclick="showTab('live-trading', 'execution')">Execution</button>
+            </div>
+            
+            <div id="live-trading-dashboard" class="tab-content active">
+                <div class="card">
+                    <h2>Live Trading Dashboard</h2>
+                    <p>Your live trading data would appear here.</p>
+                    <!-- Live trading dashboard content -->
+                </div>
+            </div>
+            
+            <div id="live-trading-positions" class="tab-content">
+                <div class="card">
+                    <h2>Live Positions</h2>
+                    <p>Current positions in your live trading account.</p>
+                    <!-- Live position data would go here -->
+                </div>
+            </div>
+            
+            <div id="live-trading-orders" class="tab-content">
+                <div class="card">
+                    <h2>Live Orders</h2>
+                    <p>Order history and pending orders for live trading.</p>
+                    <!-- Live order data would go here -->
+                </div>
+            </div>
+            
+            <div id="live-trading-execution" class="tab-content">
+                <div class="card">
+                    <h2>Execution Analytics</h2>
+                    <p>Execution quality metrics for your live trades.</p>
+                    <!-- Execution metrics would go here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Trades Page -->
+        <div id="trades" class="page">
+            <h1 class="page-title">Trades</h1>
+            
+            <div class="tab-navigation">
+                <button class="tab-button active" onclick="showTab('trades', 'history')">History</button>
+                <button class="tab-button" onclick="showTab('trades', 'analytics')">Analytics</button>
+                <button class="tab-button" onclick="showTab('trades', 'journal')">Journal</button>
+                <button class="tab-button" onclick="showTab('trades', 'tax')">Tax Reports</button>
+            </div>
+            
+            <div id="trades-history" class="tab-content active">
+                <div class="card">
+                    <h2>Trade History</h2>
+                    <p>History of all your trades across environments.</p>
+                    <!-- Trade history would go here -->
+                </div>
+            </div>
+            
+            <!-- Other tabs for Trades would go here -->
+            <div id="trades-analytics" class="tab-content">
+                <div class="card">
+                    <h2>Trade Analytics</h2>
+                    <p>Analytical insights from your trading history.</p>
+                    <!-- Trade analytics would go here -->
+                </div>
+            </div>
+            
+            <div id="trades-journal" class="tab-content">
+                <div class="card">
+                    <h2>Trading Journal</h2>
+                    <p>Your personal notes and observations on trades.</p>
+                    <!-- Trading journal would go here -->
+                </div>
+            </div>
+            
+            <div id="trades-tax" class="tab-content">
+                <div class="card">
+                    <h2>Tax Reports</h2>
+                    <p>Tax information and reports for your trading activity.</p>
+                    <!-- Tax reports would go here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- News Page -->
+        <div id="news" class="page">
+            <h1 class="page-title">News</h1>
+            
+            <div class="tab-navigation">
+                <button class="tab-button active" onclick="showTab('news', 'market')">Market News</button>
+                <button class="tab-button" onclick="showTab('news', 'portfolio')">Portfolio News</button>
+                <button class="tab-button" onclick="showTab('news', 'economic')">Economic Calendar</button>
+                <button class="tab-button" onclick="showTab('news', 'favorites')">Favorites</button>
+            </div>
+            
+            <div id="news-market" class="tab-content active">
+                <div class="card">
+                    <h2>Market News</h2>
+                    <p>Latest market news and events.</p>
+                    <!-- Market news content would go here -->
+                </div>
+            </div>
+            
+            <!-- Other tabs for News would go here -->
+            <div id="news-portfolio" class="tab-content">
+                <div class="card">
+                    <h2>Portfolio News</h2>
+                    <p>News specifically about assets in your portfolio.</p>
+                    <!-- Portfolio news would go here -->
+                </div>
+            </div>
+            
+            <div id="news-economic" class="tab-content">
+                <div class="card">
+                    <h2>Economic Calendar</h2>
+                    <p>Upcoming economic events and data releases.</p>
+                    <!-- Economic calendar would go here -->
+                </div>
+            </div>
+            
+            <div id="news-favorites" class="tab-content">
+                <div class="card">
+                    <h2>Favorite News</h2>
+                    <p>News items you've saved for reference.</p>
+                    <!-- Favorite news would go here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Floating Chat Component -->
+    <div class="floating-chat" id="chat-component">
+        <div class="chat-header" onclick="toggleChatBox()">
+            <h3>BenBot Assistant</h3>
+            <span id="chat-toggle" class="chat-toggle">−</span>
+        </div>
+        <div class="chat-body" id="chat-body">
+            <div class="chat-messages" id="chat-messages">
+                <!-- Initial greeting message -->
+                <div class="message message-bot">
+                    <div>I'm connected to the BenBot AI trading assistant. I can analyze your portfolio, strategies, positions, and provide personalized insights!</div>
+                    <div class='message-timestamp'>Just now</div>
+                </div>
+            </div>
+            <div class="chat-input">
+                <textarea id="user-message" placeholder="Type here and press Enter..."></textarea>
+                <button id="chat-send-button" onclick="sendChatMessage()">SEND</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Track current page and tab for context
+        let currentPage = 'dashboard';
+        let currentPageContext = 'dashboard-overview';
+        
+        // Data refresh interval in milliseconds (30 seconds)
+        const REFRESH_INTERVAL = 30000;
+        
+        // API endpoints
+        const API_ENDPOINTS = {
+            portfolio: '/api/portfolio',
+            risk: '/api/risk',
+            strategies: '/api/strategies',
+            positions: '/api/positions',
+            chat: '/api/chat'
+        };
+        
+        // Tooltips for metrics
+        const TOOLTIPS = {
+            'total_pnl': 'Total profit or loss for your portfolio',
+            'sharpe_ratio': 'Risk-adjusted return metric. Higher is better. > 1 is good, > 2 is excellent',
+            'drawdown': 'Maximum loss from a peak to a trough. Lower is better',
+            'win_rate': 'Percentage of winning trades',
+            'portfolio_beta': 'Measure of portfolio volatility relative to the market. > 1 is more volatile than market',
+            'var_daily': 'Value at Risk: Maximum expected loss in a day with 95% confidence',
+            'portfolio_volatility': 'Statistical measure of dispersion of returns. Lower generally means less risk',
+            'market_exposure': 'Percentage of portfolio exposed to market movements'
+        };
+        
+        // Initialize data fetching
+        document.addEventListener('DOMContentLoaded', function() {
+            showPage('dashboard');
+            showTab('dashboard', 'overview');
+            
+            // Initial data load
+            fetchAndUpdateData();
+            
+            // Set up periodic refresh
+            setInterval(fetchAndUpdateData, REFRESH_INTERVAL);
+            
+            // Make sure chat is visible by default
+            document.getElementById('chat-component').classList.remove('chat-minimized');
+            
+            // Event listener for Enter key in textarea
+            document.getElementById('user-message').addEventListener('keypress', function(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendChatMessage();
+                }
+            });
+            
+            // Event listener for send button click
+            document.getElementById('chat-send-button').addEventListener('click', function() {
+                sendChatMessage();
+            });
+            
+            // Prevent the chat from being minimized when clicking in the input area
+            document.querySelector('.chat-input').addEventListener('click', function(event) {
+                event.stopPropagation();
+            });
+            
+            // Focus the input when the chat is opened
+            document.querySelector('.chat-header').addEventListener('click', function() {
+                setTimeout(function() {
+                    if (!document.getElementById('chat-component').classList.contains('chat-minimized')) {
+                        document.getElementById('user-message').focus();
+                    }
+                }, 100);
+            });
+        });
+        
+        // Fetch and update all data
+        function fetchAndUpdateData() {
+            fetchPortfolioData();
+            fetchRiskData();
+            fetchStrategyData();
+            fetchPositionsData();
+        }
+        
+        // Fetch portfolio data
+        function fetchPortfolioData() {
+            fetch(API_ENDPOINTS.portfolio)
+                .then(response => response.json())
+                .then(data => {
+                    updatePortfolioMetrics(data);
+                })
+                .catch(error => {
+                    console.error("Error fetching portfolio data:", error);
+                    document.getElementById('portfolio-metrics').innerHTML = 
+                        '<div class="error">Error loading portfolio data. Please try again later.</div>';
+                });
+        }
+        
+        // Fetch risk data
+        function fetchRiskData() {
+            fetch(API_ENDPOINTS.risk)
+                .then(response => response.json())
+                .then(data => {
+                    updateRiskMetrics(data);
+                    updateRiskAlerts(data.alerts);
+                })
+                .catch(error => {
+                    console.error("Error fetching risk data:", error);
+                    document.getElementById('risk-metrics').innerHTML = 
+                        '<div class="error">Error loading risk data. Please try again later.</div>';
+                    document.getElementById('risk-alerts').innerHTML = 
+                        '<div class="error">Error loading risk alerts. Please try again later.</div>';
+                });
+        }
+        
+        // Fetch strategy data
+        function fetchStrategyData() {
+            fetch(API_ENDPOINTS.strategies)
+                .then(response => response.json())
+                .then(data => {
+                    updateStrategyTable(data.strategies);
+                })
+                .catch(error => {
+                    console.error("Error fetching strategy data:", error);
+                    const tableBody = document.querySelector('#strategy-table tbody');
+                    tableBody.innerHTML = '<tr><td colspan="5" class="error">Error loading strategy data. Please try again later.</td></tr>';
+                });
+        }
+        
+        // Fetch positions data
+        function fetchPositionsData() {
+            fetch(API_ENDPOINTS.positions)
+                .then(response => response.json())
+                .then(data => {
+                    updatePositionsTable(data.positions);
+                })
+                .catch(error => {
+                    console.error("Error fetching positions data:", error);
+                    const tableBody = document.querySelector('#positions-table tbody');
+                    tableBody.innerHTML = '<tr><td colspan="6" class="error">Error loading position data. Please try again later.</td></tr>';
+                });
+        }
+        
+        // Update portfolio metrics
+        function updatePortfolioMetrics(data) {
+            const container = document.getElementById('portfolio-metrics');
+            
+            container.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Total P&L
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.total_pnl}</div>
+                    </div>
+                    <div class="metric-value ${data.pnl_total >= 0 ? 'positive' : 'negative'}">
+                        ${data.pnl_total >= 0 ? '+' : ''}$${Math.abs(data.pnl_total).toLocaleString()}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Sharpe Ratio
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.sharpe_ratio}</div>
+                    </div>
+                    <div class="metric-value ${data.sharpe_ratio > 1 ? 'positive' : data.sharpe_ratio > 0.5 ? 'neutral' : 'negative'}">
+                        ${data.sharpe_ratio.toFixed(2)}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Drawdown
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.drawdown}</div>
+                    </div>
+                    <div class="metric-value ${data.drawdown < 10 ? 'positive' : data.drawdown < 20 ? 'neutral' : 'negative'}">
+                        ${data.drawdown.toFixed(2)}%
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Win Rate
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.win_rate}</div>
+                    </div>
+                    <div class="metric-value ${data.win_rate > 60 ? 'positive' : data.win_rate > 45 ? 'neutral' : 'negative'}">
+                        ${data.win_rate.toFixed(1)}%
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Update risk metrics
+        function updateRiskMetrics(data) {
+            const container = document.getElementById('risk-metrics');
+            
+            container.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Portfolio Beta
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.portfolio_beta}</div>
+                    </div>
+                    <div class="metric-value ${Math.abs(data.portfolio_beta - 1) < 0.2 ? 'neutral' : 'negative'}">
+                        ${data.portfolio_beta.toFixed(2)}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Value at Risk (VaR)
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.var_daily}</div>
+                    </div>
+                    <div class="metric-value neutral">
+                        $${data.var_daily.toLocaleString()}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Portfolio Volatility
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.portfolio_volatility}</div>
+                    </div>
+                    <div class="metric-value ${data.portfolio_volatility < 10 ? 'positive' : data.portfolio_volatility < 20 ? 'neutral' : 'negative'}">
+                        ${data.portfolio_volatility.toFixed(1)}%
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">
+                        Market Exposure
+                        <span class="info-icon">ⓘ</span>
+                        <div class="tooltip">${TOOLTIPS.market_exposure}</div>
+                    </div>
+                    <div class="metric-value ${data.market_exposure < 80 ? 'neutral' : 'negative'}">
+                        ${data.market_exposure}%
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Update risk alerts
+        function updateRiskAlerts(alerts) {
+            const container = document.getElementById('risk-alerts');
+            
+            if (alerts && alerts.length > 0) {
+                container.innerHTML = alerts.map(alert => `
+                    <div class="risk-alert ${alert.level}">
+                        <p><strong>${alert.level.charAt(0).toUpperCase() + alert.level.slice(1)} Risk:</strong> ${alert.message}</p>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<p>No active risk alerts at this time.</p>';
+            }
+        }
+        
+        // Update strategy table
+        function updateStrategyTable(strategies) {
+            const tableBody = document.querySelector('#strategy-table tbody');
+            
+            if (strategies && strategies.length > 0) {
+                tableBody.innerHTML = strategies.map(strategy => `
+                    <tr>
+                        <td>${strategy.name}</td>
+                        <td>${strategy.allocation}%</td>
+                        <td class="${strategy.return >= 0 ? 'positive' : 'negative'}">
+                            ${strategy.return >= 0 ? '+' : ''}${strategy.return.toFixed(1)}%
+                        </td>
+                        <td>${strategy.sharpe.toFixed(1)}</td>
+                        <td>${strategy.win_rate}%</td>
+                    </tr>
+                `).join('');
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="5">No strategy data available</td></tr>';
+            }
+        }
+        
+        // Update positions table
+        function updatePositionsTable(positions) {
+            const tableBody = document.querySelector('#positions-table tbody');
+            
+            if (positions && positions.length > 0) {
+                tableBody.innerHTML = positions.map(position => `
+                    <tr>
+                        <td>${position.symbol}</td>
+                        <td>${position.strategy}</td>
+                        <td>${position.type}</td>
+                        <td>$${position.entry_price.toFixed(2)}</td>
+                        <td>$${position.current_price.toFixed(2)}</td>
+                        <td class="${position.pnl_pct >= 0 ? 'positive' : 'negative'}">
+                            ${position.pnl_pct >= 0 ? '+' : ''}${position.pnl_pct.toFixed(2)}%
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="6">No positions currently open</td></tr>';
+            }
+        }
+        
+        // Show a specific page
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // Show the selected page
+            document.getElementById(pageId).classList.add('active');
+            
+            // Update navigation links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelector(`.nav-link[href="#${pageId}"]`).classList.add('active');
+            
+            // Update current page and context
+            currentPage = pageId;
+            
+            // Activate the first tab in the page
+            const firstTabButton = document.querySelector(`#${pageId} .tab-button`);
+            if (firstTabButton) {
+                firstTabButton.click();
+            } else {
+                // If no tabs, just update the context
+                currentPageContext = pageId;
+                updateChatContext();
+            }
+        }
+        
+        // Show a specific tab within a page
+        function showTab(pageId, tabId) {
+            // Hide all tabs in the page
+            document.querySelectorAll(`#${pageId} .tab-content`).forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show the selected tab
+            document.getElementById(`${pageId}-${tabId}`).classList.add('active');
+            
+            // Update tab buttons
+            document.querySelectorAll(`#${pageId} .tab-button`).forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Find and activate the clicked button
+            const buttons = document.querySelectorAll(`#${pageId} .tab-button`);
+            for (const button of buttons) {
+                if (button.getAttribute('onclick').includes(`'${pageId}', '${tabId}'`)) {
+                    button.classList.add('active');
+                    break;
+                }
+            }
+            
+            // Update current context
+            currentPageContext = `${pageId}-${tabId}`;
+            
+            // Update chat context
+            updateChatContext();
+        }
+        
+        // Toggle chat box open/closed
+        function toggleChatBox() {
+            document.getElementById('chat-component').classList.toggle('chat-minimized');
+            
+            const toggleIcon = document.getElementById('chat-toggle');
+            if (document.getElementById('chat-component').classList.contains('chat-minimized')) {
+                toggleIcon.textContent = '+';
+            } else {
+                toggleIcon.textContent = '−';
+            }
+        }
+        
+        // Send chat message
+        function sendChatMessage() {
+            const input = document.getElementById('user-message');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            const chat = document.getElementById('chat-messages');
+            
+            // Add user message
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message message-user';
+            userDiv.innerHTML = `<div>${message}</div><div class='message-timestamp'>${timestamp}</div>`;
+            chat.appendChild(userDiv);
+            
+            // Clear input
+            input.value = '';
+            chat.scrollTop = chat.scrollHeight;
+            
+            // Show thinking indicator
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message message-bot thinking';
+            loadingDiv.innerHTML = `<div>Thinking...</div>`;
+            chat.appendChild(loadingDiv);
+            chat.scrollTop = chat.scrollHeight;
+            
+            // Send to server instead of generating locally
+            fetch(API_ENDPOINTS.chat, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    context: currentPageContext
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Remove thinking indicator
+                chat.removeChild(loadingDiv);
+                
+                // Add bot response
+                const botDiv = document.createElement('div');
+                botDiv.className = 'message message-bot';
+                botDiv.innerHTML = `<div>${data.response}</div><div class='message-timestamp'>${data.timestamp || timestamp}</div>`;
+                chat.appendChild(botDiv);
+                chat.scrollTop = chat.scrollHeight;
+            })
+            .catch(error => {
+                console.error("Error calling chat API:", error);
+                
+                // Remove thinking indicator
+                chat.removeChild(loadingDiv);
+                
+                // Add error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'message message-bot';
+                errorDiv.innerHTML = `<div>Sorry, I encountered an error communicating with the server. Please try again later.</div><div class='message-timestamp'>${timestamp}</div>`;
+                chat.appendChild(errorDiv);
+                chat.scrollTop = chat.scrollHeight;
+            });
+        }
+        
+        // Update chat context (called when page or tab changes)
+        function updateChatContext() {
+            console.log(`Chat context updated: ${currentPageContext}`);
+            // This provides context for the chat API but doesn't require a server update
+        }
+    </script>
+</body>
+</html> 

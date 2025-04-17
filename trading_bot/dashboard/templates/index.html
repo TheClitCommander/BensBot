@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Ensemble Dashboard</title>
+    
+    <!-- CSS Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/gridjs/dist/theme/mermaid.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chart.js@4.2.1/dist/chart.min.css">
+    
+    <!-- Custom CSS -->
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #1abc9c;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --info-color: #3498db;
+            --success-color: #2ecc71;
+            --background-color: #f8f9fa;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .navbar {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .dashboard-container {
+            padding: 20px;
+        }
+
+        .card {
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            font-weight: bold;
+            background-color: rgba(44, 62, 80, 0.1);
+        }
+
+        .alert-high {
+            background-color: rgba(231, 76, 60, 0.2);
+            border-left: 4px solid var(--danger-color);
+        }
+
+        .alert-medium {
+            background-color: rgba(243, 156, 18, 0.2);
+            border-left: 4px solid var(--warning-color);
+        }
+
+        .alert-low {
+            background-color: rgba(52, 152, 219, 0.2);
+            border-left: 4px solid var(--info-color);
+        }
+
+        .alert-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .alert-timestamp {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        #strategy-weights-chart {
+            height: 250px;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .positive-value {
+            color: var(--success-color);
+        }
+
+        .negative-value {
+            color: var(--danger-color);
+        }
+
+        .grid-container {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <strong>Strategy Ensemble</strong> Dashboard
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Backtests</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Settings</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Documentation</a>
+                    </li>
+                </ul>
+                <span class="navbar-text" id="connection-status">
+                    <span class="badge bg-success">Connected</span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Dashboard Container -->
+    <div class="container-fluid dashboard-container">
+        <!-- Ensemble Strategy Selector -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text">Ensemble Strategy:</span>
+                    <select class="form-select" id="ensemble-selector">
+                        <option value="" disabled selected>Select an ensemble strategy</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <span class="badge bg-secondary me-2">Last update: <span id="last-update-time">--:--:--</span></span>
+                <button class="btn btn-primary" id="refresh-data">Refresh Data</button>
+            </div>
+        </div>
+
+        <!-- Main Metrics Overview -->
+        <div class="row">
+            <!-- Portfolio Value -->
+            <div class="col-md-3 col-sm-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">Portfolio Value</div>
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="portfolio-value">$100,000.00</div>
+                        <div class="metric-label">Current Value</div>
+                        <div class="mt-2">
+                            <span class="badge bg-light text-dark" id="daily-change">+0.00%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sharpe Ratio -->
+            <div class="col-md-3 col-sm-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">Sharpe Ratio</div>
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="sharpe-ratio">0.00</div>
+                        <div class="metric-label">Annualized</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drawdown -->
+            <div class="col-md-3 col-sm-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">Maximum Drawdown</div>
+                    <div class="card-body text-center">
+                        <div class="metric-value negative-value" id="max-drawdown">0.00%</div>
+                        <div class="metric-label">Current Period</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Volatility -->
+            <div class="col-md-3 col-sm-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">Volatility</div>
+                    <div class="card-body text-center">
+                        <div class="metric-value" id="volatility">0.00%</div>
+                        <div class="metric-label">Annualized</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row">
+            <!-- Portfolio Performance Chart -->
+            <div class="col-lg-8 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        Portfolio Performance
+                        <div class="float-end">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-primary active" data-timeframe="1d">1D</button>
+                                <button type="button" class="btn btn-outline-primary" data-timeframe="1w">1W</button>
+                                <button type="button" class="btn btn-outline-primary" data-timeframe="1m">1M</button>
+                                <button type="button" class="btn btn-outline-primary" data-timeframe="3m">3M</button>
+                                <button type="button" class="btn btn-outline-primary" data-timeframe="1y">1Y</button>
+                                <button type="button" class="btn btn-outline-primary" data-timeframe="all">All</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="performance-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strategy Weights -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">Strategy Weights</div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="strategy-weights-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risk Metrics and Alerts Row -->
+        <div class="row">
+            <!-- Risk Metrics Chart -->
+            <div class="col-lg-8 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">Risk Metrics</div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="risk-metrics-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Panel -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        Alerts & Notifications
+                        <span class="badge bg-danger ms-2" id="alert-count">0</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="alerts-container">
+                            <!-- Alerts will be populated dynamically -->
+                            <div class="text-center text-muted">No active alerts</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Positions Table -->
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header">Active Positions</div>
+                    <div class="card-body">
+                        <div id="positions-table"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.2.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+
+    <!-- Dashboard JavaScript -->
+    <script>
+        // Initialize socket connection
+        const socket = io();
+        let performanceChart = null;
+        let weightsChart = null;
+        let riskChart = null;
+        let selectedEnsemble = '';
+        let positionsGrid = null;
+        
+        // Helper functions for formatting
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(value);
+        }
+        
+        function formatPercent(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+        
+        function updateLastUpdateTime() {
+            const now = new Date();
+            document.getElementById('last-update-time').textContent = 
+                now.toLocaleTimeString();
+        }
+        
+        // Initialize charts
+        function initializeCharts() {
+            // Performance chart
+            const perfCtx = document.getElementById('performance-chart').getContext('2d');
+            performanceChart = new Chart(perfCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return formatCurrency(context.parsed.y);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 10
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Strategy weights chart
+            const weightsCtx = document.getElementById('strategy-weights-chart').getContext('2d');
+            weightsChart = new Chart(weightsCtx, {
+                type: 'pie',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#3498db', '#2ecc71', '#e74c3c', '#f39c12', 
+                            '#9b59b6', '#1abc9c', '#d35400', '#34495e'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + formatPercent(context.parsed / 100);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Risk metrics chart
+            const riskCtx = document.getElementById('risk-metrics-chart').getContext('2d');
+            riskChart = new Chart(riskCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Volatility',
+                            data: [],
+                            borderColor: '#f39c12',
+                            backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                            borderWidth: 2,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Drawdown',
+                            data: [],
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 2,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Sharpe Ratio',
+                            data: [],
+                            borderColor: '#2ecc71',
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            borderWidth: 2,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 10
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Volatility / Drawdown'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatPercent(value);
+                                }
+                            }
+                        },
+                        y1: {
+                            beginAtZero: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Sharpe Ratio'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize positions table
+        function initializePositionsTable() {
+            positionsGrid = new gridjs.Grid({
+                columns: [
+                    { id: 'symbol', name: 'Symbol' },
+                    { id: 'position', name: 'Position' },
+                    { id: 'value', name: 'Value', formatter: (cell) => formatCurrency(cell) },
+                    { id: 'pnl', name: 'P&L', formatter: (cell) => {
+                        const cls = cell >= 0 ? 'text-success' : 'text-danger';
+                        return gridjs.h('span', { className: cls }, formatCurrency(cell));
+                    }},
+                    { id: 'pnl_pct', name: 'P&L %', formatter: (cell) => {
+                        const cls = cell >= 0 ? 'text-success' : 'text-danger';
+                        return gridjs.h('span', { className: cls }, formatPercent(cell));
+                    }}
+                ],
+                data: [],
+                search: true,
+                sort: true,
+                pagination: {
+                    limit: 10
+                },
+                className: {
+                    table: 'table table-striped table-hover'
+                }
+            }).render(document.getElementById('positions-table'));
+        }
+        
+        // Update portfolio value card
+        function updatePortfolioCard(data) {
+            if (data && data.length > 0) {
+                const latest = data[data.length - 1];
+                document.getElementById('portfolio-value').textContent = formatCurrency(latest.value);
+                
+                // Update daily change
+                const dailyReturn = latest.return;
+                const dailyChangeEl = document.getElementById('daily-change');
+                dailyChangeEl.textContent = formatPercent(dailyReturn);
+                
+                if (dailyReturn > 0) {
+                    dailyChangeEl.className = 'badge bg-success';
+                } else if (dailyReturn < 0) {
+                    dailyChangeEl.className = 'badge bg-danger';
+                } else {
+                    dailyChangeEl.className = 'badge bg-light text-dark';
+                }
+            }
+        }
+        
+        // Update risk metrics cards
+        function updateRiskCards(data) {
+            if (data && data.length > 0) {
+                const latest = data[data.length - 1];
+                
+                // Update Sharpe ratio
+                document.getElementById('sharpe-ratio').textContent = latest.sharpe_ratio.toFixed(2);
+                
+                // Update max drawdown
+                document.getElementById('max-drawdown').textContent = formatPercent(latest.drawdown);
+                
+                // Update volatility
+                document.getElementById('volatility').textContent = formatPercent(latest.volatility);
+            }
+        }
+        
+        // Update performance chart
+        function updatePerformanceChart(data) {
+            if (data && data.length > 0) {
+                // Filter data for selected ensemble
+                const filteredData = data.filter(item => item.ensemble === selectedEnsemble);
+                
+                if (filteredData.length > 0) {
+                    // Prepare data for chart
+                    const labels = filteredData.map(item => {
+                        const date = new Date(item.timestamp);
+                        return date.toLocaleTimeString();
+                    });
+                    
+                    const values = filteredData.map(item => item.value);
+                    
+                    // Update chart
+                    performanceChart.data.labels = labels;
+                    performanceChart.data.datasets[0].data = values;
+                    performanceChart.update();
+                }
+            }
+        }
+        
+        // Update weights chart
+        function updateWeightsChart(data) {
+            if (data && data.ensemble === selectedEnsemble) {
+                const weights = data.weights;
+                
+                // Get strategy names and weight values
+                const labels = Object.keys(weights);
+                const values = Object.values(weights).map(w => w * 100); // Convert to percentages
+                
+                // Update chart
+                weightsChart.data.labels = labels;
+                weightsChart.data.datasets[0].data = values;
+                weightsChart.update();
+            }
+        }
+        
+        // Update risk metrics chart
+        function updateRiskChart(data) {
+            if (data && data.length > 0) {
+                // Filter data for selected ensemble
+                const filteredData = data.filter(item => item.ensemble === selectedEnsemble);
+                
+                if (filteredData.length > 0) {
+                    // Prepare data for chart
+                    const labels = filteredData.map(item => {
+                        const date = new Date(item.timestamp);
+                        return date.toLocaleTimeString();
+                    });
+                    
+                    const volatilities = filteredData.map(item => item.volatility);
+                    const drawdowns = filteredData.map(item => item.drawdown);
+                    const sharpes = filteredData.map(item => item.sharpe_ratio);
+                    
+                    // Update chart
+                    riskChart.data.labels = labels;
+                    riskChart.data.datasets[0].data = volatilities;
+                    riskChart.data.datasets[1].data = drawdowns;
+                    riskChart.data.datasets[2].data = sharpes;
+                    riskChart.update();
+                }
+            }
+        }
+        
+        // Update alerts container
+        function updateAlerts(alerts) {
+            const container = document.getElementById('alerts-container');
+            const alertCount = document.getElementById('alert-count');
+            
+            // Filter unacknowledged alerts
+            const unacknowledged = alerts.filter(alert => !alert.acknowledged);
+            
+            // Update alert counter
+            alertCount.textContent = unacknowledged.length;
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            if (unacknowledged.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">No active alerts</div>';
+                return;
+            }
+            
+            // Add alerts to container
+            unacknowledged.forEach((alert, index) => {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert-item alert-${alert.severity}`;
+                
+                const alertContent = document.createElement('div');
+                alertContent.innerHTML = `
+                    <strong>${alert.ensemble}</strong>: ${alert.message}
+                    <div class="alert-timestamp">${new Date(alert.timestamp).toLocaleTimeString()}</div>
+                `;
+                
+                const alertActions = document.createElement('div');
+                alertActions.className = 'text-end mt-2';
+                
+                const acknowledgeBtn = document.createElement('button');
+                acknowledgeBtn.className = 'btn btn-sm btn-outline-secondary';
+                acknowledgeBtn.textContent = 'Acknowledge';
+                acknowledgeBtn.onclick = () => acknowledgeAlert(index);
+                
+                alertActions.appendChild(acknowledgeBtn);
+                alertDiv.appendChild(alertContent);
+                alertDiv.appendChild(alertActions);
+                container.appendChild(alertDiv);
+            });
+        }
+        
+        // Acknowledge alert
+        function acknowledgeAlert(alertId) {
+            fetch(`/api/acknowledge_alert/${alertId}`, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh alerts
+                    fetch('/api/alerts')
+                        .then(response => response.json())
+                        .then(alerts => updateAlerts(alerts));
+                }
+            });
+        }
+        
+        // Update positions table
+        function updatePositionsTable(positions) {
+            if (selectedEnsemble in positions) {
+                const ensemblePositions = positions[selectedEnsemble];
+                const posData = [];
+                
+                for (const [symbol, position] of Object.entries(ensemblePositions.positions)) {
+                    // In a real implementation, you'd calculate P&L more precisely
+                    const value = Math.abs(position);
+                    const pnl = value * (Math.random() * 0.1 - 0.05); // Dummy P&L for demonstration
+                    const pnlPct = pnl / value;
+                    
+                    posData.push({
+                        symbol: symbol,
+                        position: position.toFixed(2),
+                        value: value,
+                        pnl: pnl,
+                        pnl_pct: pnlPct
+                    });
+                }
+                
+                positionsGrid.updateConfig({
+                    data: posData
+                }).forceRender();
+            }
+        }
+        
+        // Socket event handlers
+        socket.on('connect', () => {
+            document.getElementById('connection-status').innerHTML = 
+                '<span class="badge bg-success">Connected</span>';
+            console.log('Connected to server');
+            
+            // Fetch ensemble list
+            fetch('/api/ensembles')
+                .then(response => response.json())
+                .then(ensembles => {
+                    const selector = document.getElementById('ensemble-selector');
+                    selector.innerHTML = '<option value="" disabled selected>Select an ensemble strategy</option>';
+                    
+                    ensembles.forEach(ensemble => {
+                        const option = document.createElement('option');
+                        option.value = ensemble.name;
+                        option.textContent = `${ensemble.name} (${ensemble.type})`;
+                        selector.appendChild(option);
+                    });
+                });
+        });
+        
+        socket.on('disconnect', () => {
+            document.getElementById('connection-status').innerHTML = 
+                '<span class="badge bg-danger">Disconnected</span>';
+            console.log('Disconnected from server');
+        });
+        
+        socket.on('portfolio_update', (data) => {
+            updateLastUpdateTime();
+            updatePortfolioCard(data);
+            updatePerformanceChart(data);
+        });
+        
+        socket.on('weight_update', (data) => {
+            updateLastUpdateTime();
+            updateWeightsChart(data);
+        });
+        
+        socket.on('risk_update', (data) => {
+            updateLastUpdateTime();
+            updateRiskCards(data);
+            updateRiskChart(data);
+        });
+        
+        socket.on('new_alert', (alert) => {
+            fetch('/api/alerts')
+                .then(response => response.json())
+                .then(alerts => updateAlerts(alerts));
+        });
+        
+        socket.on('alerts', (alerts) => {
+            updateAlerts(alerts);
+        });
+        
+        // Event listeners
+        document.getElementById('ensemble-selector').addEventListener('change', (e) => {
+            selectedEnsemble = e.target.value;
+            
+            if (selectedEnsemble) {
+                // Fetch data for selected ensemble
+                fetch(`/api/portfolio/${selectedEnsemble}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        updatePortfolioCard(data);
+                        updatePerformanceChart(data);
+                    });
+                
+                fetch(`/api/weights/${selectedEnsemble}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.length > 0) {
+                            updateWeightsChart(data[data.length - 1]);
+                        }
+                    });
+                
+                fetch(`/api/risk/${selectedEnsemble}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        updateRiskCards(data);
+                        updateRiskChart(data);
+                    });
+            }
+        });
+        
+        document.getElementById('refresh-data').addEventListener('click', () => {
+            if (selectedEnsemble) {
+                fetch(`/api/portfolio/${selectedEnsemble}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        updatePortfolioCard(data);
+                        updatePerformanceChart(data);
+                    });
+                
+                fetch(`/api/weights/${selectedEnsemble}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data && data.length > 0) {
+                            updateWeightsChart(data[data.length - 1]);
+                        }
+                    });
+                
+                fetch(`/api/risk/${selectedEnsemble}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        updateRiskCards(data);
+                        updateRiskChart(data);
+                    });
+            }
+            
+            fetch('/api/alerts')
+                .then(response => response.json())
+                .then(alerts => updateAlerts(alerts));
+        });
+        
+        // Initialize dashboard on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCharts();
+            initializePositionsTable();
+            updateLastUpdateTime();
+            
+            // Update time every second
+            setInterval(updateLastUpdateTime, 1000);
+        });
+    </script>
+</body>
+</html> 

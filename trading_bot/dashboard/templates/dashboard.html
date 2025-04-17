@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Bot Dashboard</title>
+    
+    <!-- Load Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Load Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Load Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            padding-top: 1rem;
+            color: #343a40;
+        }
+        
+        .dashboard-header {
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .card {
+            margin-bottom: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: none;
+        }
+        
+        .card-header {
+            background-color: #fff;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: 600;
+            padding: 1rem;
+        }
+        
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        
+        .metric-change {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .positive {
+            color: #198754;
+        }
+        
+        .negative {
+            color: #dc3545;
+        }
+        
+        .position-row:hover {
+            background-color: #f8f9fa;
+        }
+
+        .strategy-bar {
+            height: 2rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .badge {
+            padding: 0.5em 0.8em;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="dashboard-header">
+            <h1>Trading Bot Dashboard</h1>
+            <p class="text-muted">Real-time monitoring of trading strategies and portfolio performance</p>
+        </div>
+        
+        <!-- Time range selector -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text">Time Range:</span>
+                    <select class="form-select" id="time-range-selector">
+                        <option value="1m">1 Minute</option>
+                        <option value="5m">5 Minutes</option>
+                        <option value="15m">15 Minutes</option>
+                        <option value="30m">30 Minutes</option>
+                        <option value="1h">1 Hour</option>
+                        <option value="8h">8 Hours</option>
+                        <option value="1d">1 Day</option>
+                        <option value="7d" selected>7 Days</option>
+                        <option value="1mo">1 Month</option>
+                        <option value="3mo">3 Months</option>
+                        <option value="6mo">6 Months</option>
+                        <option value="1y">1 Year</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Strategy Filter -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">Strategy Filter</div>
+                    <div class="card-body">
+                        <p class="text-muted mb-2">Select strategies to display:</p>
+                        <div class="strategy-filter-container">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input strategy-filter" type="checkbox" value="Momentum" id="filter-momentum" checked>
+                                <label class="form-check-label" for="filter-momentum">Momentum</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input strategy-filter" type="checkbox" value="MeanReversion" id="filter-mean-reversion" checked>
+                                <label class="form-check-label" for="filter-mean-reversion">Mean Reversion</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input strategy-filter" type="checkbox" value="Breakout" id="filter-breakout" checked>
+                                <label class="form-check-label" for="filter-breakout">Breakout</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input strategy-filter" type="checkbox" value="Volatility" id="filter-volatility" checked>
+                                <label class="form-check-label" for="filter-volatility">Volatility</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input strategy-filter" type="checkbox" value="TrendFollowing" id="filter-trend-following" checked>
+                                <label class="form-check-label" for="filter-trend-following">Trend Following</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input strategy-filter" type="checkbox" value="PairsTrading" id="filter-pairs-trading" checked>
+                                <label class="form-check-label" for="filter-pairs-trading">Pairs Trading</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Performance Metrics -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">P&L</div>
+                    <div class="card-body">
+                        <div class="metric-value" id="pnl-value">$0.00</div>
+                        <div class="metric-change" id="pnl-change">0.00%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">Sharpe Ratio</div>
+                    <div class="card-body">
+                        <div class="metric-value" id="sharpe-value">0.00</div>
+                        <div class="metric-change" id="sharpe-change">0.00</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">Max Drawdown</div>
+                    <div class="card-body">
+                        <div class="metric-value" id="drawdown-value">0.00%</div>
+                        <div class="metric-change" id="drawdown-change">0.00%</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">Volatility</div>
+                    <div class="card-body">
+                        <div class="metric-value" id="volatility-value">0.00%</div>
+                        <div class="metric-change" id="volatility-change">0.00%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Performance Chart -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">Portfolio Performance</div>
+                    <div class="card-body">
+                        <canvas id="performance-chart" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Strategy Weights -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">Strategy Allocation</div>
+                    <div class="card-body" id="strategy-weights">
+                        <!-- Strategy weights will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Positions Table -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">Current Positions</div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Position</th>
+                                        <th>Entry Price</th>
+                                        <th>Current Price</th>
+                                        <th>P&L</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="positions-table">
+                                    <!-- Positions will be added here dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Signals -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">Recent Signals</div>
+                    <div class="card-body">
+                        <ul class="list-group" id="signals-list">
+                            <!-- Signals will be added here dynamically -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Risk Alerts -->
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">Risk Alerts</div>
+                    <div class="card-body">
+                        <div id="alerts-container">
+                            <!-- Risk alerts will be added here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Dashboard JS -->
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // Performance chart
+        let performanceChart;
+        
+        // Connect to the server
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            // Subscribe to updates for default ensemble
+            socket.emit('subscribe', {ensemble: 'default'});
+        });
+        
+        // Handle disconnection
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+        });
+        
+        // Handle subscription confirmation
+        socket.on('subscription_confirmed', function(data) {
+            console.log('Subscription confirmed:', data);
+        });
+        
+        // Handle incoming messages
+        socket.on('message', function(data) {
+            console.log('Received message:', data.type);
+            
+            // Handle different message types
+            switch(data.type) {
+                case 'performance_update':
+                    updatePerformanceChart(data.performance);
+                    updateMetrics(data.metrics);
+                    break;
+                case 'weights_update':
+                    updateStrategyWeights(data.weights);
+                    break;
+                case 'positions_update':
+                    updatePositions(data.positions);
+                    break;
+                case 'signals_update':
+                    updateSignals(data.signals);
+                    break;
+                case 'risk_alerts_update':
+                    updateRiskAlerts(data.alerts);
+                    break;
+                case 'regime_update':
+                    updateRegimeIndicator(data.regime);
+                    break;
+            }
+        });
+        
+        // Initialize the performance chart
+        function initPerformanceChart() {
+            const ctx = document.getElementById('performance-chart').getContext('2d');
+            
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Portfolio',
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: true,
+                            data: []
+                        },
+                        {
+                            label: 'Benchmark',
+                            borderColor: '#6c757d',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false,
+                            data: []
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day'
+                            }
+                        },
+                        y: {
+                            beginAtZero: false
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update the performance chart with new data
+        function updatePerformanceChart(data) {
+            if (!performanceChart) {
+                initPerformanceChart();
+            }
+            
+            // Add data to the chart
+            performanceChart.data.datasets[0].data = data.portfolio;
+            performanceChart.data.datasets[1].data = data.benchmark;
+            
+            // Update the chart
+            performanceChart.update();
+        }
+        
+        // Update metrics displays
+        function updateMetrics(metrics) {
+            // PNL
+            document.getElementById('pnl-value').innerText = formatCurrency(metrics.pnl.value);
+            document.getElementById('pnl-change').innerText = formatPercent(metrics.pnl.change);
+            setChangeClass('pnl-change', metrics.pnl.change);
+            
+            // Sharpe
+            document.getElementById('sharpe-value').innerText = metrics.sharpe.value.toFixed(2);
+            document.getElementById('sharpe-change').innerText = metrics.sharpe.change.toFixed(2);
+            setChangeClass('sharpe-change', metrics.sharpe.change);
+            
+            // Drawdown
+            document.getElementById('drawdown-value').innerText = formatPercent(metrics.drawdown.value);
+            document.getElementById('drawdown-change').innerText = formatPercent(metrics.drawdown.change);
+            setChangeClass('drawdown-change', metrics.drawdown.change, true);
+            
+            // Volatility
+            document.getElementById('volatility-value').innerText = formatPercent(metrics.volatility.value);
+            document.getElementById('volatility-change').innerText = formatPercent(metrics.volatility.change);
+            setChangeClass('volatility-change', metrics.volatility.change, true);
+        }
+        
+        // Update strategy weights visualization
+        function updateStrategyWeights(weights) {
+            const container = document.getElementById('strategy-weights');
+            container.innerHTML = '';
+            
+            // Color palette for strategies
+            const colors = [
+                '#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545',
+                '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'
+            ];
+            
+            // Create a bar for each strategy
+            let i = 0;
+            for (const [strategy, weight] of Object.entries(weights)) {
+                const barDiv = document.createElement('div');
+                barDiv.className = 'strategy-bar';
+                barDiv.style.backgroundColor = colors[i % colors.length];
+                barDiv.style.width = `${weight * 100}%`;
+                barDiv.innerText = `${strategy}: ${(weight * 100).toFixed(1)}%`;
+                container.appendChild(barDiv);
+                i++;
+            }
+        }
+        
+        // Update positions table
+        function updatePositions(positions) {
+            const tableBody = document.getElementById('positions-table');
+            tableBody.innerHTML = '';
+            
+            for (const position of positions) {
+                const row = document.createElement('tr');
+                row.className = 'position-row';
+                
+                // Calculate P&L
+                const pnl = (position.current - position.entry) * position.position;
+                const pnlPct = ((position.current / position.entry) - 1) * 100;
+                
+                // Set row content
+                row.innerHTML = `
+                    <td>${position.symbol}</td>
+                    <td class="${position.position > 0 ? 'positive' : 'negative'}">${position.position}</td>
+                    <td>$${position.entry.toFixed(2)}</td>
+                    <td>$${position.current.toFixed(2)}</td>
+                    <td class="${pnl >= 0 ? 'positive' : 'negative'}">
+                        $${pnl.toFixed(2)} (${pnlPct.toFixed(2)}%)
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            }
+        }
+        
+        // Update signals list
+        function updateSignals(signals) {
+            const signalsList = document.getElementById('signals-list');
+            signalsList.innerHTML = '';
+            
+            for (const signal of signals) {
+                const listItem = document.createElement('li');
+                listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                
+                // Label color based on signal
+                const labelClass = signal.signal === 'BUY' ? 'bg-success' : 'bg-danger';
+                
+                listItem.innerHTML = `
+                    <div>
+                        <strong>${signal.symbol}</strong> 
+                        <span class="badge ${labelClass}">${signal.signal}</span>
+                    </div>
+                    <div>
+                        <span class="badge bg-secondary">${signal.timeframe}</span>
+                        <span class="badge bg-primary">${Math.round(signal.strength * 100)}%</span>
+                    </div>
+                `;
+                
+                signalsList.appendChild(listItem);
+            }
+        }
+        
+        // Update risk alerts
+        function updateRiskAlerts(alerts) {
+            const alertsContainer = document.getElementById('alerts-container');
+            alertsContainer.innerHTML = '';
+            
+            if (alerts.length === 0) {
+                alertsContainer.innerHTML = '<p class="text-muted">No active alerts</p>';
+                return;
+            }
+            
+            for (const alert of alerts) {
+                // Determine alert style based on severity
+                let alertClass = 'alert-info';
+                if (alert.severity === 'High' || alert.severity === 'Critical') {
+                    alertClass = 'alert-danger';
+                } else if (alert.severity === 'Medium') {
+                    alertClass = 'alert-warning';
+                } else if (alert.severity === 'Low') {
+                    alertClass = 'alert-success';
+                }
+                
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert ${alertClass} d-flex align-items-center`;
+                
+                // Format timestamp
+                const timestamp = new Date(alert.timestamp);
+                const formattedTime = timestamp.toLocaleString();
+                
+                alertDiv.innerHTML = `
+                    <div>
+                        <strong>${alert.title}</strong>
+                        <span class="badge bg-secondary ms-2">${alert.severity}</span>
+                        <br>
+                        <span>${alert.message}</span>
+                        <br>
+                        <small class="text-muted">${formattedTime}</small>
+                    </div>
+                `;
+                
+                alertsContainer.appendChild(alertDiv);
+            }
+        }
+        
+        // Update market regime indicator
+        function updateRegimeIndicator(regime) {
+            // This could be implemented to show the current market regime
+            console.log('Current market regime:', regime);
+        }
+        
+        // Helper function to format currency values
+        function formatCurrency(value) {
+            return value >= 0 ? 
+                '$' + value.toFixed(2) :
+                '-$' + Math.abs(value).toFixed(2);
+        }
+        
+        // Helper function to format percentage values
+        function formatPercent(value) {
+            return value.toFixed(2) + '%';
+        }
+        
+        // Helper function to set positive/negative classes
+        function setChangeClass(elementId, value, invert = false) {
+            const element = document.getElementById(elementId);
+            
+            // Clear existing classes
+            element.classList.remove('positive', 'negative');
+            
+            // Determine if value should be considered positive or negative
+            const isPositive = invert ? value < 0 : value > 0;
+            
+            // Add appropriate class
+            if (isPositive) {
+                element.classList.add('positive');
+            } else if (value < 0) {
+                element.classList.add('negative');
+            }
+        }
+        
+        // Load initial data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize the performance chart
+            initPerformanceChart();
+            
+            // Fetch initial data
+            fetch('/api/performance')
+                .then(response => response.json())
+                .then(data => {
+                    updatePerformanceChart(data.performance);
+                    updateMetrics(data.metrics);
+                });
+            
+            fetch('/api/weights')
+                .then(response => response.json())
+                .then(data => {
+                    updateStrategyWeights(data.weights);
+                });
+            
+            fetch('/api/positions')
+                .then(response => response.json())
+                .then(data => {
+                    updatePositions(data.positions);
+                });
+            
+            fetch('/api/signals')
+                .then(response => response.json())
+                .then(data => {
+                    updateSignals(data.signals);
+                });
+            
+            fetch('/api/risk_alerts')
+                .then(response => response.json())
+                .then(data => {
+                    updateRiskAlerts(data.alerts);
+                });
+        });
+    </script>
+</body>
+</html> 
