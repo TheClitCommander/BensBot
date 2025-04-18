@@ -20,7 +20,7 @@ from trading_bot.core.interfaces import DataProvider, Strategy, RiskManager, Ord
 from trading_bot.utils.config_parser import load_config_file, validate_calendar_spread_config
 from trading_bot.data.data_manager import DataManager
 from trading_bot.strategies.calendar_spread import CalendarSpreadStrategy
-from trading_bot.strategies.swing_trading import SwingTradingStrategy
+from trading_bot.strategies.stocks.swing import StockSwingTradingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class MainOrchestrator:
             interval_minutes = config.get("interval_minutes", 240)  # 4 hours default
             
             # Create strategy instance
-            strategy = SwingTradingStrategy(name=name, parameters=params)
+            strategy = StockSwingTradingStrategy(name=name, parameters=params)
             
             # Store in active strategies and strategies dict
             self.strategies[name] = strategy
@@ -179,10 +179,10 @@ class MainOrchestrator:
             # Register strategy in service registry
             ServiceRegistry.register(f"strategy.{name}", strategy, Strategy)
             
-            logger.info(f"Swing trading strategy '{name}' initialized with {len(symbols)} symbols")
+            logger.info(f"Stock swing trading strategy '{name}' initialized with {len(symbols)} symbols")
             
         except Exception as e:
-            logger.error(f"Error initializing swing trading strategy '{name}': {e}")
+            logger.error(f"Error initializing stock swing trading strategy '{name}': {e}")
     
     def _initialize_risk_manager(self) -> None:
         """Initialize risk manager based on configuration."""
