@@ -15,50 +15,209 @@ logger = logging.getLogger(__name__)
 
 class MomentumStrategy:
     """
-    Momentum trading strategy that seeks to profit from the continuation of existing price trends.
-    It captures continued price movement by buying assets that have shown strong recent performance 
-    and selling those that have underperformed.
-    
-    Features:
-    - Flexible lookback periods for momentum calculation
-    - Adjustable signal thresholds
-    - Cross-sectional ranking for relative strength
-    - Volatility adjustment to normalize signals
+    Momentum trading strategy implementation that identifies and trades based on
+    price momentum and trend strength.
     """
     
-    def __init__(
-        self,
-        lookback_periods: List[int] = [20, 60, 120],
-        signal_threshold: float = 0.0,
-        volatility_lookback: int = 20,
-        volatility_adjust: bool = True,
-        cross_sectional: bool = True,
-        name: str = "momentum"
-    ):
+    def __init__(self, lookback_period: int = 14, overbought: int = 70, oversold: int = 30):
         """
-        Initialize the momentum strategy.
+        Initialize the momentum strategy with configurable parameters.
         
         Args:
-            lookback_periods: List of periods to calculate momentum over
-            signal_threshold: Threshold for momentum signal to generate a trade
-            volatility_lookback: Period for volatility calculation
-            volatility_adjust: Whether to adjust momentum by volatility
-            cross_sectional: Whether to use cross-sectional momentum (relative ranking)
-            name: Strategy name
+            lookback_period: Period for calculating momentum indicators
+            overbought: RSI threshold for overbought condition
+            oversold: RSI threshold for oversold condition
         """
-        self.lookback_periods = lookback_periods
-        self.signal_threshold = signal_threshold
-        self.volatility_lookback = volatility_lookback
-        self.volatility_adjust = volatility_adjust
-        self.cross_sectional = cross_sectional
-        self.name = name
+        self.name = "Momentum"
+        self.lookback_period = lookback_period
+        self.overbought = overbought
+        self.oversold = oversold
+        self.description = "Trades based on price momentum and trend strength"
         
-        # Performance tracking
-        self.signals = {}
-        self.performance = {}
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate trade signals based on momentum indicators.
         
-        logger.info(f"Initialized {self.name} strategy with lookback periods {self.lookback_periods}")
+        Args:
+            data: DataFrame with OHLCV price data
+            
+        Returns:
+            DataFrame with added momentum indicators and trade signals
+        """
+        if len(data) < self.lookback_period:
+            return pd.DataFrame()
+        
+        # Calculate price momentum (close price change over lookback period)
+        data = data.copy()
+        data['momentum'] = data['close'].pct_change(self.lookback_period)
+        
+        # Calculate Rate of Change (ROC)
+        data['roc'] = (data['close'] / data['close'].shift(self.lookback_period) - 1) * 100
+        
+        # Calculate RSI
+        delta = data['close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=self.lookback_period).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=self.lookback_period).mean()
+        
+        rs = gain / loss
+        data['rsi'] = 100 - (100 / (1 + rs))
+        
+        # Calculate Average Directional Index (ADX) for trend strength
+        high_diff = data['high'].diff()
+        low_diff = data['low'].diff().abs()
+        
+        plus_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0)
+        minus_dm = low_diff.where((low_diff > high_diff) & (low_diff > 0), 0)
+        
+        tr = pd.DataFrame({
+            'hl': data['high'] - data['low'],
+            'hc': (data['high'] - data['close'].shift()).abs(),
+            'lc': (data['low'] - data['close'].shift()).abs()
+        }).max(axis=1)
+        
+        atr = tr.rolling(window=self.lookback_period).mean()
+        
+        plus_di = 100 * (plus_dm.rolling(window=self.lookback_period).mean() / atr)
+        minus_di = 100 * (minus_dm.rolling(window=self.lookback_period).mean() / atr)
+        
+        dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
+        data['adx'] = dx.rolling(window=self.lookback_period).mean()
+        
+        # Generate signals
+        data['signal'] = 0  # 0 = no signal, 1 = buy, -1 = sell
+        
+        # Buy conditions:
+        # 1. Strong upward momentum (positive ROC)
+        # 2. RSI was oversold but is now increasing
+        # 3. ADX indicates strong trend (> 25)
+        data.loc[(data['roc'] > 0) & 
+                 (data['rsi'] > self.oversold) & 
+                 (data['rsi'].shift(1) <= self.oversold) &
+                 (data['adx'] > 25), 'signal'] = 1
+        
+        # Sell conditions:
+        # 1. Momentum turns negative
+        # 2. RSI reaches overbought territory
+        # 3. Price momentum weakening
+        data.loc[(data['roc'] < 0) | 
+                 (data['rsi'] >= self.overbought) |
+                 ((data['momentum'].shift(1) > data['momentum']) & 
+                  (data['momentum'] > 0) & 
+                  (data['rsi'] > 60)), 'signal'] = -1
+        
+        return data
     
+    def get_parameters(self) -> Dict[str, Any]:
+        """Return strategy parameters"""
+        return {
+            "lookback_period": self.lookback_period,
+            "overbought": self.overbought,
+            "oversold": self.oversold
+        }
+    
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """Set strategy parameters"""
+        if 'lookback_period' in params:
+            self.lookback_period = params['lookback_period']
+        if 'overbought' in params:
+            self.overbought = params['overbought']
+        if 'oversold' in params:
+            self.oversold = params['oversold']
+            
+    def optimize(self, data: pd.DataFrame, 
+                 param_grid: Optional[Dict[str, List[Any]]] = None) -> Tuple[Dict[str, Any], Dict[str, float]]:
+        """
+        Optimize strategy parameters based on historical data.
+        
+        Args:
+            data: Historical price data
+            param_grid: Dictionary of parameter names and possible values
+            
+        Returns:
+            Tuple of (best parameters, performance metrics)
+        """
+        if param_grid is None:
+            param_grid = {
+                'lookback_period': [5, 10, 14, 20, 30],
+                'overbought': [65, 70, 75, 80],
+                'oversold': [20, 25, 30, 35]
+            }
+        
+        best_params = {}
+        best_performance = {
+            'sharpe_ratio': 0,
+            'profit_factor': 0,
+            'win_rate': 0,
+            'max_drawdown': 100
+        }
+        
+        # Grid search through parameters
+        # In a real implementation, this would be more sophisticated
+        for lookback in param_grid['lookback_period']:
+            for overbought in param_grid['overbought']:
+                for oversold in param_grid['oversold']:
+                    # Skip invalid combinations
+                    if oversold >= overbought:
+                        continue
+                        
+                    # Set parameters and generate signals
+                    self.set_parameters({
+                        'lookback_period': lookback,
+                        'overbought': overbought,
+                        'oversold': oversold
+                    })
+                    
+                    result = self.generate_signals(data)
+                    metrics = self._calculate_performance(result)
+                    
+                    # Update best parameters if performance is better
+                    if metrics['sharpe_ratio'] > best_performance['sharpe_ratio']:
+                        best_performance = metrics
+                        best_params = self.get_parameters()
+        
+        return best_params, best_performance
+    
+    def _calculate_performance(self, data: pd.DataFrame) -> Dict[str, float]:
+        """Calculate performance metrics for the strategy"""
+        if 'signal' not in data.columns or len(data) == 0:
+            return {
+                'sharpe_ratio': 0,
+                'profit_factor': 0,
+                'win_rate': 0,
+                'max_drawdown': 100
+            }
+        
+        # Calculate daily returns based on signals
+        data['position'] = data['signal'].shift(1).fillna(0)
+        data['returns'] = data['close'].pct_change() * data['position']
+        
+        # Calculate metrics
+        total_return = data['returns'].sum()
+        volatility = data['returns'].std() * np.sqrt(252)  # Annualized
+        sharpe_ratio = total_return / volatility if volatility > 0 else 0
+        
+        # Calculate win rate and profit factor
+        winning_trades = data[data['returns'] > 0]['returns'].sum()
+        losing_trades = abs(data[data['returns'] < 0]['returns'].sum())
+        win_count = len(data[data['returns'] > 0])
+        total_trades = len(data[data['returns'] != 0])
+        
+        win_rate = win_count / total_trades if total_trades > 0 else 0
+        profit_factor = winning_trades / losing_trades if losing_trades > 0 else 0
+        
+        # Calculate drawdown
+        cumulative_returns = (1 + data['returns']).cumprod()
+        running_max = cumulative_returns.cummax()
+        drawdown = (cumulative_returns / running_max - 1)
+        max_drawdown = abs(drawdown.min()) * 100
+        
+        return {
+            'sharpe_ratio': sharpe_ratio,
+            'profit_factor': profit_factor,
+            'win_rate': win_rate,
+            'max_drawdown': max_drawdown
+        }
+
     def calculate_momentum(
         self, 
         prices: pd.DataFrame, 
@@ -306,7 +465,7 @@ class MomentumStrategy:
         return {
             "name": self.name,
             "type": "momentum",
-            "lookback_periods": self.lookback_periods,
+            "lookback_periods": self.lookback_period,
             "signal_threshold": self.signal_threshold,
             "volatility_adjust": self.volatility_adjust,
             "cross_sectional": self.cross_sectional,

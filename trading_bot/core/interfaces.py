@@ -1,145 +1,235 @@
 """
-Core interfaces for the trading system components.
-These interfaces define the contracts that implementations must follow,
-allowing for decoupling between components.
+Core Interfaces
+
+This module defines the interfaces for the core components of the trading system,
+ensuring that different implementations can be used interchangeably.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-
-class DataSourceInterface(ABC):
-    """Interface for all data sources, regardless of provider or asset type."""
+class DataProvider(ABC):
+    """Interface for data providers that fetch market data."""
     
     @abstractmethod
-    def get_data(self, symbol: str, start_date: Optional[datetime] = None, 
-                end_date: Optional[datetime] = None, **kwargs) -> Dict[str, Any]:
+    def get_market_data(self, symbols: List[str], start_date: Optional[datetime] = None, 
+                      end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Get data for a specific symbol and time range.
+        Get market data for a list of symbols.
         
         Args:
-            symbol: The symbol to get data for
-            start_date: Start of the time range
-            end_date: End of the time range
-            **kwargs: Additional provider-specific parameters
+            symbols: List of symbols to fetch data for
+            start_date: Start date for historical data
+            end_date: End date for historical data
             
         Returns:
-            Dictionary containing the requested data
+            Dictionary mapping symbols to their market data
         """
         pass
     
     @abstractmethod
-    def get_latest(self, symbol: str, **kwargs) -> Dict[str, Any]:
+    def get_option_chain(self, symbol: str, expiration_date: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get the latest data for a symbol.
+        Get option chain data for a symbol.
         
         Args:
-            symbol: The symbol to get data for
-            **kwargs: Additional provider-specific parameters
+            symbol: Symbol to fetch option chain for
+            expiration_date: Optional specific expiration date
             
         Returns:
-            Dictionary containing the latest data
+            Option chain data
         """
         pass
 
-
-class IndicatorInterface(ABC):
-    """Interface for all technical indicator providers."""
+class Strategy(ABC):
+    """Interface for trading strategies."""
     
     @abstractmethod
-    def calculate_indicators(self, data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    def calculate_indicators(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Calculate technical indicators for the provided data.
+        Calculate indicators for the strategy based on market data.
         
         Args:
-            data: Market data to calculate indicators for
-            **kwargs: Additional parameters for calculations
+            data: Market data for calculation
             
         Returns:
-            Dictionary with calculated indicators
+            Calculated indicators
         """
         pass
     
     @abstractmethod
-    def get_indicator_metadata(self, indicator: Optional[str] = None) -> Dict[str, Any]:
+    def generate_signals(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Get metadata for available indicators.
+        Generate trading signals based on market data.
         
         Args:
-            indicator: Specific indicator name or None for all
+            data: Market data for signal generation
             
         Returns:
-            Dictionary with indicator metadata
-        """
-        pass
-    
-    @abstractmethod
-    def update_parameters(self, params: Dict[str, Any]) -> None:
-        """
-        Update parameters for indicator calculations.
-        
-        Args:
-            params: New parameter values
+            List of trading signals
         """
         pass
 
-
-class StrategyInterface(ABC):
-    """Interface for all trading strategies."""
+class RiskManager(ABC):
+    """Interface for risk management."""
     
     @abstractmethod
-    def generate_signal(self, data: Dict[str, Any]) -> float:
+    def validate_signal(self, signal: Dict[str, Any], portfolio: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generate a trading signal from the provided data.
+        Validate a trading signal against risk management rules.
         
         Args:
-            data: Market and indicator data
+            signal: Trading signal to validate
+            portfolio: Current portfolio state
             
         Returns:
-            Signal value between -1.0 (strong sell) and 1.0 (strong buy)
+            Validated signal (possibly modified) or None if rejected
         """
         pass
     
     @abstractmethod
-    def update_parameters(self, params: Dict[str, Any]) -> None:
+    def calculate_position_size(self, signal: Dict[str, Any], portfolio: Dict[str, Any]) -> int:
         """
-        Update strategy parameters.
+        Calculate appropriate position size for a signal.
         
         Args:
-            params: New parameter values
-        """
-        pass
-    
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Get the strategy name."""
-        pass
-
-
-class WebhookInterface(ABC):
-    """Interface for webhook handlers."""
-    
-    @abstractmethod
-    def process_webhook(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process an incoming webhook payload.
-        
-        Args:
-            data: Webhook payload data
+            signal: Trading signal
+            portfolio: Current portfolio state
             
         Returns:
-            Response data
+            Position size (number of contracts/shares)
         """
         pass
     
     @abstractmethod
-    def start(self) -> None:
-        """Start the webhook server."""
+    def calculate_portfolio_risk(self, portfolio: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate overall portfolio risk metrics.
+        
+        Args:
+            portfolio: Current portfolio state
+            
+        Returns:
+            Dictionary of risk metrics
+        """
+        pass
+
+class OrderManager(ABC):
+    """Interface for order management."""
+    
+    @abstractmethod
+    def place_order(self, order: Dict[str, Any]) -> str:
+        """
+        Place an order with the broker.
+        
+        Args:
+            order: Order details
+            
+        Returns:
+            Order ID
+        """
         pass
     
     @abstractmethod
-    def stop(self) -> None:
-        """Stop the webhook server."""
+    def cancel_order(self, order_id: str) -> bool:
+        """
+        Cancel an existing order.
+        
+        Args:
+            order_id: ID of the order to cancel
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        pass
+    
+    @abstractmethod
+    def get_order_status(self, order_id: str) -> Dict[str, Any]:
+        """
+        Get the status of an order.
+        
+        Args:
+            order_id: ID of the order
+            
+        Returns:
+            Order status details
+        """
+        pass
+    
+    @abstractmethod
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        """
+        Get all open orders.
+        
+        Returns:
+            List of open orders
+        """
+        pass
+
+class PortfolioManager(ABC):
+    """Interface for portfolio management."""
+    
+    @abstractmethod
+    def get_positions(self) -> Dict[str, Any]:
+        """
+        Get current positions.
+        
+        Returns:
+            Dictionary of positions
+        """
+        pass
+    
+    @abstractmethod
+    def get_portfolio_value(self) -> float:
+        """
+        Get current portfolio value.
+        
+        Returns:
+            Portfolio value
+        """
+        pass
+    
+    @abstractmethod
+    def update_portfolio(self, transaction: Dict[str, Any]) -> None:
+        """
+        Update portfolio based on a transaction.
+        
+        Args:
+            transaction: Transaction details
+        """
+        pass
+    
+    @abstractmethod
+    def get_portfolio_history(self, start_date: Optional[datetime] = None,
+                            end_date: Optional[datetime] = None) -> Dict[str, Any]:
+        """
+        Get portfolio history for a date range.
+        
+        Args:
+            start_date: Start date
+            end_date: End date
+            
+        Returns:
+            Portfolio history data
+        """
+        pass
+
+class NotificationManager(ABC):
+    """Interface for sending notifications."""
+    
+    @abstractmethod
+    def send_notification(self, message: str, level: str = "info", 
+                        category: str = "general") -> bool:
+        """
+        Send a notification.
+        
+        Args:
+            message: Notification message
+            level: Notification level (info, warning, error)
+            category: Notification category
+            
+        Returns:
+            True if successful, False otherwise
+        """
         pass 

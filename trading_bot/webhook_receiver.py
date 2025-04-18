@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional, Union
 # Import executor components
 from trading_bot.strategy_loader import StrategyLoader
 from trading_bot.trade_executor import TradeExecutor, TradeResult, TradeType, OrderSide, OrderType
-from trading_bot.psychological_risk import PsychologicalRiskManager, PositionSizer
+from trading_bot.risk.psychological_risk import PsychologicalRiskManager, PositionSizer
 from trading_bot.cooldown_manager import CooldownManager
 from trading_bot.strategy_monitor import StrategyMonitor
 

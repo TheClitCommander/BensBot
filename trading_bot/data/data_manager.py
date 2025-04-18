@@ -1,867 +1,461 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Unified Data Manager for backtesting and learning operations.
-Consolidates functionality from multiple implementations into a single, consistent interface.
+Data Manager
+
+This module provides a central manager for all data operations,
+coordinating the data providers and storage.
 """
 
-import os
-import json
 import logging
 import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional, Any, Union, Tuple
-from datetime import datetime
-from pathlib import Path
-import pickle
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from typing import Dict, List, Any, Optional, Union, Set
+from datetime import datetime, timedelta
+
+from trading_bot.core.service_registry import ServiceRegistry
+from trading_bot.data.yahoo_finance_provider import YahooFinanceProvider
+from trading_bot.data.data_storage import DataStorage
+from trading_bot.data.real_time_provider import RealTimeProvider
 
 logger = logging.getLogger(__name__)
 
 class DataManager:
     """
-    Unified data manager for handling data operations related to:
-    - Market data loading and preprocessing
-    - Feature generation and selection
-    - Data splitting and scaling
-    - Backtest result management
-    - Learning result storage and retrieval
+    Data manager that coordinates data providers and storage.
     """
     
-    def __init__(
-        self, 
-        data_dir: str = "data",
-        results_dir: str = "results",
-        models_dir: str = "models"
-    ):
+    def __init__(self, config: Dict[str, Any]):
         """
-        Initialize the unified data manager.
+        Initialize the data manager.
         
         Args:
-            data_dir: Directory for input data storage
-            results_dir: Directory for results storage
-            models_dir: Directory for model storage
+            config: Configuration dictionary
         """
-        self.data_dir = Path(data_dir)
-        self.results_dir = Path(results_dir)
-        self.models_dir = Path(models_dir)
+        self.config = config
+        self.market_data_providers = {}
+        self.real_time_providers = {}
+        self.data_storage = None
+        self.cache_enabled = config.get("enable_cache", True)
+        self.cache_expiry_minutes = config.get("cache_expiry_minutes", 30)
+        self.cache = {}
+        self.cache_timestamps = {}
         
-        # Create directories if they don't exist
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.results_dir.mkdir(parents=True, exist_ok=True)
-        self.models_dir.mkdir(parents=True, exist_ok=True)
+        # Initialize components
+        self._initialize_components()
         
-        # Initialize storage dictionaries
-        self.backtest_results = {}
-        self.learning_results = {}
-        self.current_data = {}
-        
-        # Initialize data transformers
-        self.scalers = {}
-        
-        logger.info(f"Initialized Unified Data Manager with data_dir: {data_dir}")
+        logger.info("Data manager initialized")
     
-    # -------------------------------------------------------------------------
-    # Market Data Management
-    # -------------------------------------------------------------------------
+    def _initialize_components(self) -> None:
+        """Initialize all data components based on configuration."""
+        try:
+            # Initialize data storage
+            storage_config = self.config.get("data_storage", {})
+            base_dir = storage_config.get("base_dir", "data")
+            self.data_storage = DataStorage(base_dir=base_dir)
+            
+            # Register data storage in service registry
+            ServiceRegistry.register("data_storage", self.data_storage, DataStorage)
+            
+            # Initialize market data providers
+            providers_config = self.config.get("data_providers", [])
+            for provider_config in providers_config:
+                provider_name = provider_config.get("name", "")
+                if not provider_name:
+                    continue
+                
+                provider_type = provider_config.get("type", "")
+                
+                if provider_name == "yahoo_finance" or provider_type == "python_library":
+                    self._initialize_yahoo_finance(provider_config)
+                    
+            # Initialize real-time providers
+            realtime_config = self.config.get("realtime_providers", [])
+            for provider_config in realtime_config:
+                provider_name = provider_config.get("provider", "")
+                if not provider_name:
+                    continue
+                
+                if provider_name == "finnhub":
+                    self._initialize_finnhub(provider_config)
+            
+            # Register data manager in service registry
+            ServiceRegistry.register("data_manager", self, DataManager)
+            
+        except Exception as e:
+            logger.error(f"Error initializing data components: {e}")
+            raise
     
-    def load_market_data(
-        self,
-        symbol: str,
-        timeframe: str = "1d",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        custom_data_path: Optional[str] = None
-    ) -> pd.DataFrame:
+    def _initialize_yahoo_finance(self, config: Dict[str, Any]) -> None:
         """
-        Load market data for a specific symbol and timeframe.
+        Initialize Yahoo Finance data provider.
         
         Args:
-            symbol: Market symbol to load data for
-            timeframe: Data frequency (1d, 1h, etc.)
-            start_date: Start date in YYYY-MM-DD format
-            end_date: End date in YYYY-MM-DD format
-            custom_data_path: Optional path to custom data file
+            config: Provider configuration
+        """
+        try:
+            provider = YahooFinanceProvider(config)
+            provider_name = config.get("name", "yahoo_finance")
+            
+            self.market_data_providers[provider_name] = provider
+            
+            # Register in service registry
+            ServiceRegistry.register(f"data_provider.{provider_name}", provider, YahooFinanceProvider)
+            
+            logger.info(f"Initialized Yahoo Finance data provider as '{provider_name}'")
+            
+        except Exception as e:
+            logger.error(f"Error initializing Yahoo Finance data provider: {e}")
+    
+    def _initialize_finnhub(self, config: Dict[str, Any]) -> None:
+        """
+        Initialize Finnhub real-time data provider.
+        
+        Args:
+            config: Provider configuration
+        """
+        try:
+            provider = RealTimeProvider(config)
+            provider_name = config.get("name", "finnhub")
+            
+            self.real_time_providers[provider_name] = provider
+            
+            # Register in service registry
+            ServiceRegistry.register(f"realtime_provider.{provider_name}", provider, RealTimeProvider)
+            
+            logger.info(f"Initialized Finnhub real-time provider as '{provider_name}'")
+            
+        except Exception as e:
+            logger.error(f"Error initializing Finnhub real-time provider: {e}")
+    
+    def get_market_data(self, symbols: Union[str, List[str]], 
+                      start_date: Optional[datetime] = None,
+                      end_date: Optional[datetime] = None,
+                      provider_name: Optional[str] = None,
+                      use_cache: Optional[bool] = None) -> Dict[str, pd.DataFrame]:
+        """
+        Get market data for symbols.
+        
+        Args:
+            symbols: Symbol or list of symbols
+            start_date: Start date for data
+            end_date: End date for data
+            provider_name: Specific provider to use
+            use_cache: Whether to use cache
             
         Returns:
-            DataFrame with market data
+            Dictionary mapping symbols to DataFrames with market data
         """
-        # Use custom data if provided
-        if custom_data_path and os.path.exists(custom_data_path):
+        # Normalize symbols to list
+        if isinstance(symbols, str):
+            symbols = [symbols]
+        
+        # Set default dates
+        if end_date is None:
+            end_date = datetime.now()
+        
+        if start_date is None:
+            start_date = end_date - timedelta(days=365)
+        
+        # Determine whether to use cache
+        if use_cache is None:
+            use_cache = self.cache_enabled
+        
+        # Initialize result dict
+        result = {}
+        
+        # Symbols to fetch from providers
+        symbols_to_fetch = set(symbols)
+        
+        # Try to get data from cache first
+        if use_cache:
+            for symbol in symbols:
+                cache_key = f"{symbol}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                
+                if self._is_cache_valid(cache_key):
+                    result[symbol] = self.cache[cache_key]
+                    symbols_to_fetch.remove(symbol)
+                    logger.debug(f"Using cached data for {symbol}")
+        
+        # If all symbols were found in cache, return result
+        if not symbols_to_fetch:
+            return result
+        
+        # Try to get data from storage for remaining symbols
+        for symbol in list(symbols_to_fetch):
+            data = self.data_storage.load_market_data(symbol, "ohlcv")
+            
+            if data is not None:
+                # Filter data by date range
+                if 'date' in data.columns:
+                    data = data[(data['date'] >= start_date) & (data['date'] <= end_date)]
+                
+                if not data.empty:
+                    result[symbol] = data
+                    symbols_to_fetch.remove(symbol)
+                    
+                    # Add to cache
+                    if use_cache:
+                        cache_key = f"{symbol}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                        self.cache[cache_key] = data
+                        self.cache_timestamps[cache_key] = datetime.now()
+                    
+                    logger.debug(f"Using stored data for {symbol}")
+        
+        # If all symbols were found in storage, return result
+        if not symbols_to_fetch:
+            return result
+        
+        # Fetch remaining symbols from providers
+        if not self.market_data_providers:
+            logger.warning("No market data providers available")
+            return result
+        
+        # Determine which provider to use
+        if provider_name and provider_name in self.market_data_providers:
+            providers_to_try = [provider_name]
+        else:
+            # Try all providers in order of priority
+            providers_to_try = list(self.market_data_providers.keys())
+        
+        # Try each provider until data is found
+        for provider_name in providers_to_try:
+            provider = self.market_data_providers[provider_name]
+            
             try:
-                data = pd.read_csv(custom_data_path)
-                logger.info(f"Loaded custom data from {custom_data_path}")
+                provider_data = provider.get_market_data(
+                    list(symbols_to_fetch),
+                    start_date=start_date,
+                    end_date=end_date
+                )
                 
-                # Convert date column if present
-                date_col = next((col for col in data.columns if 'date' in col.lower() or 'time' in col.lower()), None)
-                if date_col:
-                    data[date_col] = pd.to_datetime(data[date_col])
-                    data = data.rename(columns={date_col: 'datetime'})
-                    data = data.set_index('datetime')
+                for symbol, data in provider_data.items():
+                    if data is not None and not data.empty:
+                        result[symbol] = data
+                        symbols_to_fetch.remove(symbol)
+                        
+                        # Save to storage
+                        self.data_storage.save_market_data(symbol, data, "ohlcv")
+                        
+                        # Add to cache
+                        if use_cache:
+                            cache_key = f"{symbol}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                            self.cache[cache_key] = data
+                            self.cache_timestamps[cache_key] = datetime.now()
                 
-                # Filter by date range if provided
-                if start_date:
-                    data = data[data.index >= start_date]
-                if end_date:
-                    data = data[data.index <= end_date]
-                
-                return data
+                # If all symbols were found, break
+                if not symbols_to_fetch:
+                    break
                 
             except Exception as e:
-                logger.error(f"Error loading custom data: {str(e)}")
-                return pd.DataFrame()
-        
-        # Load standard data file
-        file_name = f"{symbol}_{timeframe}.csv"
-        file_path = self.data_dir / file_name
-        
-        try:
-            # Load data from CSV
-            data = pd.read_csv(file_path, index_col=0, parse_dates=True)
-            logger.info(f"Loaded {len(data)} rows for {symbol} ({timeframe})")
-            
-            # Filter by date range if provided
-            if start_date:
-                data = data[data.index >= start_date]
-            if end_date:
-                data = data[data.index <= end_date]
-                
-            # Store in current data dictionary
-            key = f"{symbol}_{timeframe}"
-            self.current_data[key] = data
-            
-            return data
-            
-        except FileNotFoundError:
-            logger.error(f"Data file not found: {file_path}")
-            return pd.DataFrame()
-        except Exception as e:
-            logger.error(f"Error loading market data: {str(e)}")
-            return pd.DataFrame()
-    
-    def generate_features(
-        self,
-        data: pd.DataFrame,
-        feature_set: str = "default",
-        params: Optional[Dict[str, Any]] = None
-    ) -> pd.DataFrame:
-        """
-        Generate features from raw market data.
-        
-        Args:
-            data: Input market data
-            feature_set: Name of feature set to generate
-            params: Parameters for feature generation
-            
-        Returns:
-            DataFrame with generated features
-        """
-        params = params or {}
-        features = data.copy()
-        
-        if feature_set == "default":
-            # Basic price-based features
-            if "close" in features.columns:
-                # Price-based features
-                features["returns"] = features["close"].pct_change()
-                features["log_returns"] = np.log(features["close"] / features["close"].shift(1))
-                
-                # Moving averages
-                for window in [5, 10, 20, 50, 200]:
-                    features[f"ma_{window}"] = features["close"].rolling(window=window).mean()
-                    features[f"ma_ratio_{window}"] = features["close"] / features[f"ma_{window}"]
-                
-                # Volatility estimates
-                for window in [10, 20, 50]:
-                    features[f"volatility_{window}"] = features["returns"].rolling(window=window).std()
-                
-                # RSI 
-                delta = features["close"].diff()
-                gain = delta.where(delta > 0, 0)
-                loss = -delta.where(delta < 0, 0)
-                
-                avg_gain = gain.rolling(window=14).mean()
-                avg_loss = loss.rolling(window=14).mean()
-                
-                rs = avg_gain / avg_loss
-                features["rsi_14"] = 100 - (100 / (1 + rs))
-                
-                # MACD
-                features["ema_12"] = features["close"].ewm(span=12, adjust=False).mean()
-                features["ema_26"] = features["close"].ewm(span=26, adjust=False).mean()
-                features["macd"] = features["ema_12"] - features["ema_26"]
-                features["macd_signal"] = features["macd"].ewm(span=9, adjust=False).mean()
-                features["macd_hist"] = features["macd"] - features["macd_signal"]
-            
-            # Volume-based features if available
-            if "volume" in features.columns:
-                features["volume_ma_10"] = features["volume"].rolling(window=10).mean()
-                features["volume_ratio"] = features["volume"] / features["volume_ma_10"]
-                
-        elif feature_set == "advanced":
-            # Include all default features first
-            features = self.generate_features(data, feature_set="default")
-            
-            # Add advanced features
-            if "high" in features.columns and "low" in features.columns:
-                # Bollinger Bands
-                window = params.get("bb_window", 20)
-                std_dev = params.get("bb_std", 2)
-                
-                features[f"bb_ma_{window}"] = features["close"].rolling(window=window).mean()
-                features[f"bb_std_{window}"] = features["close"].rolling(window=window).std()
-                features[f"bb_upper_{window}"] = features[f"bb_ma_{window}"] + (features[f"bb_std_{window}"] * std_dev)
-                features[f"bb_lower_{window}"] = features[f"bb_ma_{window}"] - (features[f"bb_std_{window}"] * std_dev)
-                features[f"bb_width_{window}"] = (features[f"bb_upper_{window}"] - features[f"bb_lower_{window}"]) / features[f"bb_ma_{window}"]
-                features[f"bb_pct_{window}"] = (features["close"] - features[f"bb_lower_{window}"]) / (features[f"bb_upper_{window}"] - features[f"bb_lower_{window}"])
-                
-                # ATR (Average True Range)
-                tr1 = abs(features["high"] - features["low"])
-                tr2 = abs(features["high"] - features["close"].shift(1))
-                tr3 = abs(features["low"] - features["close"].shift(1))
-                
-                features["tr"] = pd.DataFrame([tr1, tr2, tr3]).max()
-                features["atr_14"] = features["tr"].rolling(window=14).mean()
-        
-        # Drop rows with NaN values from calculations
-        features = features.dropna()
-        
-        return features
-    
-    def split_data(
-        self,
-        features: pd.DataFrame,
-        target_col: str = "target_next_return",
-        test_size: float = 0.2,
-        validation_size: float = 0.2,
-        shuffle: bool = False,
-        random_state: int = 42
-    ) -> Dict[str, Union[pd.DataFrame, pd.Series]]:
-        """
-        Split data into training, validation, and test sets.
-        
-        Args:
-            features: Feature DataFrame
-            target_col: Target column name
-            test_size: Fraction of data for testing
-            validation_size: Fraction of training data for validation
-            shuffle: Whether to shuffle data before splitting
-            random_state: Random seed for reproducibility
-            
-        Returns:
-            Dictionary with split dataframes and series
-        """
-        if target_col not in features.columns:
-            raise ValueError(f"Target column '{target_col}' not found in features")
-        
-        # Extract target variable
-        y = features[target_col]
-        X = features.drop(columns=[target_col])
-        
-        # Extract potential target direction column
-        if "target_next_direction" in X.columns:
-            direction = X["target_next_direction"]
-            X = X.drop(columns=["target_next_direction"])
-        else:
-            direction = None
-        
-        # First split into train+val and test
-        if shuffle:
-            from sklearn.model_selection import train_test_split
-            X_train_val, X_test, y_train_val, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=random_state
-            )
-            
-            if direction is not None:
-                train_val_idx = X_train_val.index
-                test_idx = X_test.index
-                direction_train_val = direction.loc[train_val_idx]
-                direction_test = direction.loc[test_idx]
-            
-        else:
-            # Time series split (no shuffle)
-            test_idx = int(len(X) * (1 - test_size))
-            X_train_val, X_test = X.iloc[:test_idx], X.iloc[test_idx:]
-            y_train_val, y_test = y.iloc[:test_idx], y.iloc[test_idx:]
-            
-            if direction is not None:
-                direction_train_val = direction.iloc[:test_idx]
-                direction_test = direction.iloc[test_idx:]
-        
-        # Then split train+val into train and val
-        if shuffle:
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_train_val, y_train_val, 
-                test_size=validation_size / (1 - test_size),
-                random_state=random_state
-            )
-            
-            if direction is not None:
-                train_idx = X_train.index
-                val_idx = X_val.index
-                direction_train = direction_train_val.loc[train_idx]
-                direction_val = direction_train_val.loc[val_idx]
-            
-        else:
-            # Time series split (no shuffle)
-            val_idx = int(len(X_train_val) * (1 - validation_size / (1 - test_size)))
-            X_train, X_val = X_train_val.iloc[:val_idx], X_train_val.iloc[val_idx:]
-            y_train, y_val = y_train_val.iloc[:val_idx], y_train_val.iloc[val_idx:]
-            
-            if direction is not None:
-                direction_train = direction_train_val.iloc[:val_idx]
-                direction_val = direction_train_val.iloc[val_idx:]
-        
-        result = {
-            "X_train": X_train,
-            "X_val": X_val, 
-            "X_test": X_test,
-            "y_train": y_train,
-            "y_val": y_val,
-            "y_test": y_test
-        }
-        
-        if direction is not None:
-            result.update({
-                "direction_train": direction_train,
-                "direction_val": direction_val,
-                "direction_test": direction_test
-            })
+                logger.error(f"Error fetching data from provider '{provider_name}': {e}")
         
         return result
     
-    def preprocess_data(
-        self,
-        X_train: pd.DataFrame,
-        X_val: Optional[pd.DataFrame] = None,
-        X_test: Optional[pd.DataFrame] = None,
-        scaler_type: str = "standard",
-        feature_selection: bool = False,
-        n_features: Optional[int] = None
-    ) -> Dict[str, Any]:
+    def get_option_chain(self, symbol: str, expiration_date: Optional[str] = None,
+                       provider_name: Optional[str] = None) -> Dict[str, Any]:
         """
-        Preprocess data by scaling and optionally performing feature selection.
+        Get option chain data for a symbol.
         
         Args:
-            X_train: Training features
-            X_val: Validation features
-            X_test: Test features
-            scaler_type: Type of scaler ('standard' or 'minmax')
-            feature_selection: Whether to perform feature selection
-            n_features: Number of features to select
+            symbol: Symbol to get options for
+            expiration_date: Specific expiration date
+            provider_name: Specific provider to use
             
         Returns:
-            Dictionary with processed data and scaler
+            Option chain data
         """
-        # Initialize scaler
-        if scaler_type == "standard":
-            scaler = StandardScaler()
-        elif scaler_type == "minmax":
-            scaler = MinMaxScaler()
+        # Try to get data from storage first
+        if expiration_date:
+            data = self.data_storage.load_option_data(symbol, expiration_date)
+            
+            if data is not None:
+                logger.debug(f"Using stored option data for {symbol} expiration {expiration_date}")
+                return data
+        
+        # Fetch from providers if not found in storage
+        if not self.market_data_providers:
+            logger.warning("No market data providers available")
+            return {}
+        
+        # Determine which provider to use
+        if provider_name and provider_name in self.market_data_providers:
+            providers_to_try = [provider_name]
         else:
-            raise ValueError(f"Unknown scaler type: {scaler_type}")
+            # Try all providers in order of priority
+            providers_to_try = list(self.market_data_providers.keys())
         
-        # Fit scaler on training data and transform
-        X_train_scaled = pd.DataFrame(
-            scaler.fit_transform(X_train),
-            columns=X_train.columns,
-            index=X_train.index
-        )
-        
-        # Save the scaler
-        self.scalers[scaler_type] = scaler
-        
-        # Transform validation data if provided
-        X_val_scaled = None
-        if X_val is not None:
-            X_val_scaled = pd.DataFrame(
-                scaler.transform(X_val),
-                columns=X_val.columns,
-                index=X_val.index
-            )
-        
-        # Transform test data if provided
-        X_test_scaled = None
-        if X_test is not None:
-            X_test_scaled = pd.DataFrame(
-                scaler.transform(X_test),
-                columns=X_test.columns,
-                index=X_test.index
-            )
-        
-        # Feature selection if enabled
-        selected_features = None
-        if feature_selection and n_features is not None:
-            # Basic feature selection based on correlation with target
-            feature_correlations = X_train.abs().mean().sort_values(ascending=False)
-            selected_features = feature_correlations.head(n_features).index.tolist()
+        # Try each provider until data is found
+        for provider_name in providers_to_try:
+            provider = self.market_data_providers[provider_name]
             
-            X_train_scaled = X_train_scaled[selected_features]
-            
-            if X_val_scaled is not None:
-                X_val_scaled = X_val_scaled[selected_features]
+            try:
+                data = provider.get_option_chain(symbol, expiration_date)
                 
-            if X_test_scaled is not None:
-                X_test_scaled = X_test_scaled[selected_features]
+                if data and (
+                    ('chains' in data and data['chains']) or 
+                    ('calls' in data and not data['calls'].empty) or
+                    ('puts' in data and not data['puts'].empty)
+                ):
+                    # Save to storage if specific expiration
+                    if expiration_date:
+                        self.data_storage.save_option_data(symbol, expiration_date, data)
+                    
+                    return data
                 
-            logger.info(f"Selected {n_features} features based on mean absolute value")
+            except Exception as e:
+                logger.error(f"Error fetching option data from provider '{provider_name}': {e}")
         
-        return {
-            "X_train_scaled": X_train_scaled,
-            "X_val_scaled": X_val_scaled,
-            "X_test_scaled": X_test_scaled,
-            "scaler": scaler,
-            "selected_features": selected_features
-        }
+        return {}
     
-    # -------------------------------------------------------------------------
-    # Backtest Result Management
-    # -------------------------------------------------------------------------
-    
-    def save_backtest_result(
-        self,
-        backtest_id: str,
-        result_data: Dict[str, Any]
-    ) -> bool:
+    def start_realtime_stream(self, provider_name: Optional[str] = None) -> bool:
         """
-        Save a backtest result.
+        Start real-time data streaming.
         
         Args:
-            backtest_id: Unique identifier for the backtest
-            result_data: Dictionary with backtest results
+            provider_name: Specific provider to start
             
         Returns:
-            True if successful, False otherwise
+            True if started successfully, False otherwise
         """
-        try:
-            # Add timestamp if not present
-            if "timestamp" not in result_data:
-                result_data["timestamp"] = datetime.now().isoformat()
-            
-            # Create results directory if it doesn't exist
-            backtest_dir = self.results_dir / "backtests"
-            backtest_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save to JSON file
-            result_path = backtest_dir / f"{backtest_id}.json"
-            
-            with open(result_path, "w") as f:
-                json.dump(result_data, f, indent=2)
-            
-            # Cache in memory
-            self.backtest_results[backtest_id] = result_data
-            
-            logger.info(f"Saved backtest result: {backtest_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving backtest result: {str(e)}")
+        if not self.real_time_providers:
+            logger.warning("No real-time providers available")
             return False
+        
+        success = True
+        
+        # Determine which providers to start
+        if provider_name:
+            providers_to_start = {provider_name: self.real_time_providers.get(provider_name)}
+        else:
+            providers_to_start = self.real_time_providers
+        
+        # Start each provider
+        for name, provider in providers_to_start.items():
+            if provider is None:
+                logger.warning(f"Real-time provider '{name}' not found")
+                success = False
+                continue
+            
+            try:
+                provider_success = provider.start()
+                if not provider_success:
+                    logger.error(f"Failed to start real-time provider '{name}'")
+                    success = False
+                
+            except Exception as e:
+                logger.error(f"Error starting real-time provider '{name}': {e}")
+                success = False
+        
+        return success
     
-    def get_backtest_result(
-        self,
-        backtest_id: str
-    ) -> Dict[str, Any]:
+    def stop_realtime_stream(self, provider_name: Optional[str] = None) -> None:
         """
-        Get a backtest result.
+        Stop real-time data streaming.
         
         Args:
-            backtest_id: Unique identifier for the backtest
-            
-        Returns:
-            Dictionary with backtest results
+            provider_name: Specific provider to stop
         """
-        # Try to get from in-memory cache first
-        if backtest_id in self.backtest_results:
-            return self.backtest_results[backtest_id]
+        if not self.real_time_providers:
+            return
         
-        # Load from file
-        backtest_dir = self.results_dir / "backtests"
-        result_path = backtest_dir / f"{backtest_id}.json"
+        # Determine which providers to stop
+        if provider_name:
+            providers_to_stop = {provider_name: self.real_time_providers.get(provider_name)}
+        else:
+            providers_to_stop = self.real_time_providers
         
-        if not result_path.exists():
-            logger.error(f"Backtest result not found: {backtest_id}")
-            return {}
-        
-        try:
-            with open(result_path, "r") as f:
-                result_data = json.load(f)
+        # Stop each provider
+        for name, provider in providers_to_stop.items():
+            if provider is None:
+                continue
             
-            # Cache in memory
-            self.backtest_results[backtest_id] = result_data
-            
-            return result_data
-            
-        except Exception as e:
-            logger.error(f"Error loading backtest result: {str(e)}")
-            return {}
+            try:
+                provider.stop()
+            except Exception as e:
+                logger.error(f"Error stopping real-time provider '{name}': {e}")
     
-    def get_backtest_results(
-        self,
-        limit: int = 10,
-        sort_by: str = "timestamp",
-        sort_order: str = "desc"
-    ) -> List[Dict[str, Any]]:
+    def subscribe_to_realtime(self, symbol: str, callback, provider_name: Optional[str] = None) -> bool:
         """
-        Get multiple backtest results.
+        Subscribe to real-time data for a symbol.
         
         Args:
-            limit: Maximum number of results to return
-            sort_by: Field to sort by
-            sort_order: Sort order ('asc' or 'desc')
+            symbol: Symbol to subscribe to
+            callback: Callback function for data updates
+            provider_name: Specific provider to use
             
         Returns:
-            List of backtest result dictionaries
+            True if subscribed successfully, False otherwise
         """
-        backtest_dir = self.results_dir / "backtests"
+        if not self.real_time_providers:
+            logger.warning("No real-time providers available")
+            return False
         
-        if not backtest_dir.exists():
-            logger.warning("Backtest directory does not exist")
-            return []
-        
-        try:
-            # Get all JSON files in backtest directory
-            result_files = list(backtest_dir.glob("*.json"))
+        # Determine which provider to use
+        if provider_name and provider_name in self.real_time_providers:
+            provider = self.real_time_providers[provider_name]
             
-            # Load all results
-            results = []
-            for file_path in result_files:
-                try:
-                    with open(file_path, "r") as f:
-                        result_data = json.load(f)
-                    
-                    # Add backtest ID from filename
-                    if "backtest_id" not in result_data:
-                        result_data["backtest_id"] = file_path.stem
-                    
-                    results.append(result_data)
-                    
-                    # Cache in memory
-                    self.backtest_results[file_path.stem] = result_data
-                    
-                except Exception as e:
-                    logger.error(f"Error loading backtest result file {file_path}: {str(e)}")
-            
-            # Sort results
-            if sort_by in results[0] if results else False:
-                reverse = sort_order.lower() == "desc"
-                results.sort(key=lambda x: x.get(sort_by, ""), reverse=reverse)
-            
-            # Limit results
-            return results[:limit]
-            
-        except Exception as e:
-            logger.error(f"Error getting backtest results: {str(e)}")
-            return []
-    
-    def delete_backtest_result(
-        self,
-        backtest_id: str
-    ) -> bool:
-        """
-        Delete a backtest result.
-        
-        Args:
-            backtest_id: Unique identifier for the backtest
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Remove from in-memory cache
-            if backtest_id in self.backtest_results:
-                del self.backtest_results[backtest_id]
-            
-            # Delete file
-            backtest_dir = self.results_dir / "backtests"
-            result_path = backtest_dir / f"{backtest_id}.json"
-            
-            if result_path.exists():
-                result_path.unlink()
-                logger.info(f"Deleted backtest result: {backtest_id}")
-                return True
-            else:
-                logger.warning(f"Backtest result not found for deletion: {backtest_id}")
+            if provider is None:
+                logger.warning(f"Real-time provider '{provider_name}' not found")
                 return False
             
-        except Exception as e:
-            logger.error(f"Error deleting backtest result: {str(e)}")
-            return False
-    
-    # -------------------------------------------------------------------------
-    # Learning Result Management
-    # -------------------------------------------------------------------------
-    
-    def save_learning_result(
-        self,
-        learning_id: str,
-        result_data: Dict[str, Any]
-    ) -> bool:
-        """
-        Save a learning result.
-        
-        Args:
-            learning_id: Unique identifier for the learning process
-            result_data: Dictionary with learning results
+            # Subscribe to symbol
+            return provider.subscribe(symbol, callback)
             
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Add timestamp if not present
-            if "timestamp" not in result_data:
-                result_data["timestamp"] = datetime.now().isoformat()
-            
-            # Create results directory if it doesn't exist
-            learning_dir = self.results_dir / "learning"
-            learning_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save to JSON file
-            result_path = learning_dir / f"{learning_id}.json"
-            
-            with open(result_path, "w") as f:
-                json.dump(result_data, f, indent=2)
-            
-            # Cache in memory
-            self.learning_results[learning_id] = result_data
-            
-            logger.info(f"Saved learning result: {learning_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving learning result: {str(e)}")
-            return False
-    
-    def get_learning_result(
-        self,
-        learning_id: str
-    ) -> Dict[str, Any]:
-        """
-        Get a learning result.
-        
-        Args:
-            learning_id: Unique identifier for the learning process
-            
-        Returns:
-            Dictionary with learning results
-        """
-        # Try to get from in-memory cache first
-        if learning_id in self.learning_results:
-            return self.learning_results[learning_id]
-        
-        # Load from file
-        learning_dir = self.results_dir / "learning"
-        result_path = learning_dir / f"{learning_id}.json"
-        
-        if not result_path.exists():
-            logger.error(f"Learning result not found: {learning_id}")
-            return {}
-        
-        try:
-            with open(result_path, "r") as f:
-                result_data = json.load(f)
-            
-            # Cache in memory
-            self.learning_results[learning_id] = result_data
-            
-            return result_data
-            
-        except Exception as e:
-            logger.error(f"Error loading learning result: {str(e)}")
-            return {}
-    
-    def get_learning_results(
-        self,
-        limit: int = 10,
-        sort_by: str = "timestamp",
-        sort_order: str = "desc"
-    ) -> List[Dict[str, Any]]:
-        """
-        Get multiple learning results.
-        
-        Args:
-            limit: Maximum number of results to return
-            sort_by: Field to sort by
-            sort_order: Sort order ('asc' or 'desc')
-            
-        Returns:
-            List of learning result dictionaries
-        """
-        learning_dir = self.results_dir / "learning"
-        
-        if not learning_dir.exists():
-            logger.warning("Learning directory does not exist")
-            return []
-        
-        try:
-            # Get all JSON files in learning directory
-            result_files = list(learning_dir.glob("*.json"))
-            
-            # Load all results
-            results = []
-            for file_path in result_files:
+        else:
+            # Try all providers, use first successful one
+            for name, provider in self.real_time_providers.items():
                 try:
-                    with open(file_path, "r") as f:
-                        result_data = json.load(f)
-                    
-                    # Add learning ID from filename
-                    if "learning_id" not in result_data:
-                        result_data["learning_id"] = file_path.stem
-                    
-                    results.append(result_data)
-                    
-                    # Cache in memory
-                    self.learning_results[file_path.stem] = result_data
-                    
+                    success = provider.subscribe(symbol, callback)
+                    if success:
+                        logger.info(f"Subscribed to {symbol} using provider '{name}'")
+                        return True
+                
                 except Exception as e:
-                    logger.error(f"Error loading learning result file {file_path}: {str(e)}")
+                    logger.error(f"Error subscribing to {symbol} with provider '{name}': {e}")
             
-            # Sort results
-            if sort_by in results[0] if results else False:
-                reverse = sort_order.lower() == "desc"
-                results.sort(key=lambda x: x.get(sort_by, ""), reverse=reverse)
-            
-            # Limit results
-            return results[:limit]
-            
-        except Exception as e:
-            logger.error(f"Error getting learning results: {str(e)}")
-            return []
-    
-    # -------------------------------------------------------------------------
-    # Model Management
-    # -------------------------------------------------------------------------
-    
-    def save_model(
-        self,
-        model_id: str,
-        model: Any,
-        model_info: Dict[str, Any]
-    ) -> bool:
-        """
-        Save a trained model.
-        
-        Args:
-            model_id: Unique identifier for the model
-            model: Trained model object
-            model_info: Dictionary with model metadata
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Add timestamp if not present
-            if "timestamp" not in model_info:
-                model_info["timestamp"] = datetime.now().isoformat()
-            
-            # Create models directory if it doesn't exist
-            model_dir = self.models_dir / model_id
-            model_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save model to pickle file
-            model_path = model_dir / f"{model_id}.pkl"
-            
-            with open(model_path, "wb") as f:
-                pickle.dump(model, f)
-            
-            # Save model info to JSON file
-            info_path = model_dir / f"{model_id}_info.json"
-            
-            with open(info_path, "w") as f:
-                json.dump(model_info, f, indent=2)
-            
-            logger.info(f"Saved model: {model_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving model: {str(e)}")
+            logger.warning(f"Failed to subscribe to {symbol} with any provider")
             return False
     
-    def load_model(
-        self,
-        model_id: str
-    ) -> Tuple[Any, Dict[str, Any]]:
+    def _is_cache_valid(self, cache_key: str) -> bool:
         """
-        Load a trained model.
+        Check if cached data is still valid.
         
         Args:
-            model_id: Unique identifier for the model
+            cache_key: Cache key to check
             
         Returns:
-            Tuple of (model, model_info)
+            True if cache is valid, False otherwise
         """
-        model_dir = self.models_dir / model_id
-        model_path = model_dir / f"{model_id}.pkl"
-        info_path = model_dir / f"{model_id}_info.json"
+        if not self.cache_enabled:
+            return False
+            
+        if cache_key not in self.cache or cache_key not in self.cache_timestamps:
+            return False
         
-        if not model_path.exists() or not info_path.exists():
-            logger.error(f"Model files not found for: {model_id}")
-            return None, {}
-        
-        try:
-            # Load model from pickle file
-            with open(model_path, "rb") as f:
-                model = pickle.load(f)
-            
-            # Load model info from JSON file
-            with open(info_path, "r") as f:
-                model_info = json.load(f)
-            
-            logger.info(f"Loaded model: {model_id}")
-            return model, model_info
-            
-        except Exception as e:
-            logger.error(f"Error loading model: {str(e)}")
-            return None, {}
+        # Check if cache has expired
+        cache_age = datetime.now() - self.cache_timestamps[cache_key]
+        return cache_age.total_seconds() < (self.cache_expiry_minutes * 60)
     
-    def get_models(self) -> List[str]:
-        """
-        Get list of available models.
+    def clear_cache(self) -> None:
+        """Clear the data cache."""
+        self.cache.clear()
+        self.cache_timestamps.clear()
+        logger.info("Data manager cache cleared")
         
-        Returns:
-            List of model IDs
-        """
-        if not self.models_dir.exists():
-            logger.warning("Models directory does not exist")
-            return []
-        
-        try:
-            # Get all subdirectories in models directory
-            model_dirs = [d.name for d in self.models_dir.iterdir() if d.is_dir()]
-            return model_dirs
-            
-        except Exception as e:
-            logger.error(f"Error getting models: {str(e)}")
-            return []
+        # Clear provider caches as well
+        for provider_name, provider in self.market_data_providers.items():
+            if hasattr(provider, 'clear_cache'):
+                try:
+                    provider.clear_cache()
+                except Exception as e:
+                    logger.error(f"Error clearing cache for provider '{provider_name}': {e}")
     
-    def delete_model(
-        self,
-        model_id: str
-    ) -> bool:
-        """
-        Delete a model.
+    def shutdown(self) -> None:
+        """Shutdown all data components."""
+        # Stop real-time providers
+        self.stop_realtime_stream()
         
-        Args:
-            model_id: Unique identifier for the model
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Delete model directory and all contents
-            model_dir = self.models_dir / model_id
-            
-            if model_dir.exists():
-                for file_path in model_dir.iterdir():
-                    file_path.unlink()
-                
-                model_dir.rmdir()
-                logger.info(f"Deleted model: {model_id}")
-                return True
-            else:
-                logger.warning(f"Model not found for deletion: {model_id}")
-                return False
-            
-        except Exception as e:
-            logger.error(f"Error deleting model: {str(e)}")
-            return False 
+        # Clear cache
+        self.clear_cache()
+        
+        logger.info("Data manager shutdown complete") 

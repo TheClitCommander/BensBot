@@ -1,7 +1,9 @@
 """
-Trading Bot Dashboard
+Trading Bot Dashboard Module
 
-A real-time dashboard for monitoring and controlling the trading bot strategies and performance.
+This module provides visualization and user interface components for the trading bot.
 """
+
+# Import dashboard components here if needed
 
 __version__ = '0.1.0' 

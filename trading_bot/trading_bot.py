@@ -21,7 +21,7 @@ import importlib
 import threading
 
 # Import components
-from trading_bot.psychological_risk import PsychologicalRiskManager
+from trading_bot.risk.psychological_risk import PsychologicalRiskManager
 from trading_bot.position_sizing import PositionSizer, SizingMethod
 from trading_bot.trade_executor import TradeExecutor, TradeResult, OrderSide, OrderType, TradeType
 from trading_bot.strategy_loader import StrategyLoader

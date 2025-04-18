@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Add the parent directory to sys.path to support imports
 current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-parent_dir = current_dir.parent
+parent_dir = current_dir.parent.parent
 if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
@@ -41,6 +41,10 @@ def main():
         
     except Exception as e:
         logger.error(f"Error starting dashboard: {e}")
+        # Use the simple dashboard as fallback
+        logger.info("Using simple dashboard as fallback...")
+        from simple_dashboard import app
+        app.run(debug=True, host='0.0.0.0', port=8080)
         sys.exit(1)
 
 if __name__ == "__main__":

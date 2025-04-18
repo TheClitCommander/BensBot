@@ -1,21 +1,36 @@
 """
-Trading Strategies Module
+Trading Strategies Package
 
-This module contains the implementations of various trading strategies.
+This package contains various trading strategies organized by category:
+- Timeframe-based strategies (swing, day, position, etc.)
+- Options income strategies (covered calls, cash-secured puts, etc.)
+- Options spread strategies (butterflies, iron condors, etc.)
 """
 
-from trading_bot.strategies.trend_following import TrendFollowingStrategy
-from trading_bot.strategies.momentum import MomentumStrategy
-from trading_bot.strategies.mean_reversion import MeanReversionStrategy
-from trading_bot.strategies.breakout_swing import BreakoutSwingStrategy
-from trading_bot.strategies.volatility_breakout import VolatilityBreakoutStrategy
-from trading_bot.strategies.option_spreads import OptionSpreadsStrategy
+# Import from category packages
+from trading_bot.strategies.timeframe import *
+from trading_bot.strategies.options_income import *
+from trading_bot.strategies.options_spreads import *
+
+# Import base classes and common utilities
+from trading_bot.strategies.strategy_template import (
+    StrategyTemplate, 
+    StrategyOptimizable,
+    Signal, 
+    SignalType,
+    TimeFrame,
+    MarketRegime
+)
 
 __all__ = [
-    'TrendFollowingStrategy',
-    'MomentumStrategy',
-    'MeanReversionStrategy',
-    'BreakoutSwingStrategy',
-    'VolatilityBreakoutStrategy',
-    'OptionSpreadsStrategy'
+    # Base classes
+    'StrategyTemplate',
+    'StrategyOptimizable',
+    'Signal',
+    'SignalType',
+    'TimeFrame',
+    'MarketRegime',
+    
+    # Import all strategies from subpackages
+    # These will be populated from the imports above
 ] 

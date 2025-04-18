@@ -1,15 +1,12 @@
 """
-Risk management module for trading systems.
+Risk Module
 
-This module provides:
-- Comprehensive risk controls
-- Position concentration limits
-- Daily loss limits
-- Emergency shutdown mechanisms
-- Multi-channel alerting
+This module provides classes and functions for risk management,
+position sizing, and risk assessment.
 """
 
 from trading_bot.risk.risk_manager import RiskManager
 from trading_bot.risk.risk_monitor import RiskMonitor
+from trading_bot.risk.psychological_risk import PsychologicalRiskManager
 
-__all__ = ['RiskManager', 'RiskMonitor'] 
+__all__ = ['RiskManager', 'RiskMonitor', 'PsychologicalRiskManager'] 
