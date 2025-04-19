@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import logging
 from typing import Dict, List, Any, Tuple, Optional, Union
 
-from trading_bot.strategies.base_strategy import StrategyOptimizable
+from trading_bot.strategies.strategy_template import StrategyOptimizable
 from trading_bot.utils.straddle_utils import (
     calculate_straddle_cost, 
     calculate_straddle_breakeven_points,

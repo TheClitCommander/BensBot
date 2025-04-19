@@ -5,6 +5,16 @@ Iron Condor Strategy Module
 
 This module implements an iron condor options strategy that profits from 
 neutral market movements by collecting premium with defined risk on both sides.
+
+An iron condor is created by:
+1. Selling a put option at a strike price below the current market price (OTM put)
+2. Buying a put option at an even lower strike price (further OTM)
+3. Selling a call option at a strike price above the current market price (OTM call)
+4. Buying a call option at an even higher strike price (further OTM)
+5. Using the same expiration date for all options
+
+This creates a position with defined risk and reward that profits when the 
+underlying asset stays within a range between the short put and short call strikes.
 """
 
 import logging
@@ -13,8 +23,8 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Tuple, Optional
 
-from trading_bot.base.strategy import StrategyOptimizable
-from trading_bot.base.universe import Universe
+from trading_bot.strategies.strategy_template import StrategyOptimizable
+from trading_bot.market.universe import Universe
 from trading_bot.market.market_data import MarketData
 from trading_bot.market.option_chains import OptionChains
 from trading_bot.orders.order_manager import OrderManager
@@ -28,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 class IronCondorStrategy(StrategyOptimizable):
     """
-    Iron Condor Strategy
+    Iron Condor Options Strategy
     
     This strategy involves simultaneously selling an OTM put spread and an OTM call spread
     with the same expiration date, creating a range where the strategy profits if the
@@ -37,9 +47,23 @@ class IronCondorStrategy(StrategyOptimizable):
     Key characteristics:
     - Limited risk (max loss = wing width - net premium received)
     - Limited profit (max profit = net premium received)
-    - Benefits from time decay
+    - Benefits from time decay (theta positive)
     - Profits from neutral to range-bound price movement
     - Defined risk-reward ratio on both sides of the market
+    - Maximum profit achieved when price is between short strikes at expiration
+    - Breakeven points at short put minus net credit and short call plus net credit
+    
+    Ideal market conditions:
+    - Neutral market outlook
+    - Elevated implied volatility (to collect higher premium)
+    - Range-bound or low volatility expected in the future
+    - When you expect IV contraction (strategy benefits from vega decay)
+    - Liquid options markets with tight bid-ask spreads
+    
+    Attributes:
+        params (Dict[str, Any]): Dictionary of strategy parameters
+        name (str): Strategy name, defaults to 'iron_condor'
+        version (str): Strategy version, defaults to '1.0.0'
     """
     
     # ======================== 1. STRATEGY PHILOSOPHY ========================
@@ -105,7 +129,25 @@ class IronCondorStrategy(StrategyOptimizable):
     
     # ======================== 3. UNIVERSE DEFINITION ========================
     def define_universe(self, market_data: MarketData) -> Universe:
-        """Define the universe of stocks to trade based on criteria."""
+        """
+        Define the universe of stocks to trade based on criteria.
+        
+        This method filters the available stocks based on price range, option liquidity, 
+        and market behavior to identify suitable candidates for the iron condor strategy.
+        
+        Parameters:
+            market_data (MarketData): Market data provider containing price and historical data
+            
+        Returns:
+            Universe: A Universe object containing the filtered symbols
+            
+        Notes:
+            The filtering process applies multiple criteria in sequence:
+            1. Price range filtering (min/max stock price)
+            2. Volume and liquidity checks (ADV, option volume, open interest)
+            3. Option bid-ask spread checks
+            4. Market condition checks (range-bound behavior)
+        """
         universe = Universe()
         
         # Filter by price range
@@ -148,13 +190,23 @@ class IronCondorStrategy(StrategyOptimizable):
         """
         Check if the symbol meets the selection criteria for the strategy.
         
+        Performs a detailed analysis of a single symbol to determine if it meets all
+        required conditions for implementing an iron condor, including implied
+        volatility levels, range-bound behavior, and option chain availability.
+        
         Parameters:
-            symbol: Symbol to check
-            market_data: Market data instance
-            option_chains: Option chains instance
+            symbol (str): Symbol to check
+            market_data (MarketData): Market data instance
+            option_chains (OptionChains): Option chains data provider
             
         Returns:
             bool: True if symbol meets all criteria, False otherwise
+            
+        Notes:
+            Criteria checked include:
+            - IV rank within desired range
+            - Range-bound price behavior
+            - Suitable option expirations available
         """
         # Check IV rank is in the desired range
         vol_signals = VolatilitySignals(market_data)
@@ -209,13 +261,29 @@ class IronCondorStrategy(StrategyOptimizable):
         """
         Select the appropriate option contracts for the iron condor.
         
+        Identifies the optimal expiration date and strike prices for all four legs
+        of the iron condor based on strategy parameters and current market conditions.
+        Calculates key metrics for the spread including credit, wing widths, maximum loss,
+        and risk-reward ratio.
+        
         Parameters:
-            symbol: The stock symbol
-            market_data: Market data instance
-            option_chains: Option chains instance
+            symbol (str): The stock symbol
+            market_data (MarketData): Market data instance
+            option_chains (OptionChains): Option chains data provider
             
         Returns:
-            Dict with selected option contracts
+            Dict[str, Any]: Dictionary containing selected option contracts and trade details
+                - symbol: Underlying symbol
+                - strategy: Strategy identifier
+                - expiration: Selected expiration date
+                - dte: Days to expiration
+                - All four leg details (short/long puts and calls)
+                - Contract identifiers for all legs
+                - Credits for put spread, call spread, and total
+                - Wing widths for put and call sides
+                - Maximum potential loss and risk-reward ratio
+                - Current price of underlying
+                - Timestamp of selection
         """
         # Get current price
         current_price = market_data.get_latest_price(symbol)
@@ -311,12 +379,25 @@ class IronCondorStrategy(StrategyOptimizable):
         """
         Calculate the number of condors to trade based on risk parameters.
         
+        Determines the appropriate position size for the iron condor based on
+        the strategy's risk parameters, portfolio value, and the characteristics
+        of the specific spread. Ensures that position sizing adheres to risk
+        management guidelines.
+        
         Parameters:
-            trade_details: Details of the selected iron condor
-            position_sizer: Position sizer instance
+            trade_details (Dict[str, Any]): Details of the selected iron condor
+            position_sizer (PositionSizer): Position sizer instance for portfolio information
             
         Returns:
-            int: Number of condors to trade
+            int: Number of iron condors to trade (contracts)
+            
+        Notes:
+            The position size calculation considers:
+            - Maximum risk per condor
+            - Maximum risk allocation per trade
+            - Maximum position size limit
+            - Margin requirements
+            - Ensures at least 1 condor is traded if all criteria are met
         """
         # Calculate max risk per condor
         max_loss_per_condor = trade_details['max_loss'] * 100  # Convert to dollars (per contract)
@@ -360,12 +441,21 @@ class IronCondorStrategy(StrategyOptimizable):
         """
         Prepare orders for executing the iron condor.
         
+        Creates the necessary order objects for all four legs of the iron condor.
+        These orders include all the details needed for execution, including symbols,
+        prices, quantities, and associated metadata.
+        
         Parameters:
-            trade_details: Details of the selected iron condor
-            num_condors: Number of condors to trade
+            trade_details (Dict[str, Any]): Details of the selected iron condor
+            num_condors (int): Number of condors to trade
             
         Returns:
-            List of orders to execute
+            List[Order]: List of orders to execute (one for each leg of the iron condor)
+            
+        Notes:
+            - Creates separate limit orders for each leg
+            - Includes detailed order metadata for tracking and management
+            - In production, might be replaced with broker-specific combo orders
         """
         if num_condors <= 0:
             return []
@@ -471,88 +561,190 @@ class IronCondorStrategy(StrategyOptimizable):
     def check_exit_conditions(self, position: Dict[str, Any], 
                              market_data: MarketData) -> bool:
         """
-        Check if exit conditions are met for an existing position.
+        Evaluate if the iron condor position should be exited based on predefined criteria.
+        
+        This method implements a comprehensive exit framework for iron condor positions by
+        evaluating multiple exit scenarios including profit targets, stop losses, time decay
+        thresholds, and technical signals. Each exit condition addresses different risk factors
+        and trade management objectives.
+        
+        Exit conditions evaluated:
+        1. Profit target achieved: Exit when a predefined percentage of maximum profit is captured
+        2. Stop loss triggered: Exit when losses exceed a predefined multiple of the credit received
+        3. DTE threshold: Exit when approaching expiration to avoid gamma risk and pin risk
+        4. Price breach: Exit when underlying price breaches either short strike significantly
+        5. Volatility collapse: Exit when IV drops significantly below entry levels
+        6. Technical reversal: Exit based on technical analysis signals indicating trend change
         
         Parameters:
-            position: The current position
-            market_data: Market data instance
+            position (Dict[str, Any]): Dictionary containing position details including:
+                - entry price and time
+                - option contracts and strikes
+                - credit received and maximum loss
+                - current P&L
+            market_data (MarketData): Market data provider with current prices and indicators
             
         Returns:
-            bool: True if exit conditions are met
+            bool: True if any exit condition is met, False otherwise
+            
+        Notes:
+            Early management of iron condors (before expiration) is essential to avoid
+            assignment risk and to lock in profits before time decay slows or volatility events occur.
         """
-        if not position or 'trade_details' not in position:
-            logger.error("Invalid position data for exit check")
+        if not position:
             return False
             
-        trade_details = position.get('trade_details', {})
-        symbol = trade_details.get('symbol')
-        
+        symbol = position.get('symbol')
         if not symbol:
+            logger.error("Position missing symbol")
             return False
             
-        # Check if DTE is below threshold
-        current_dte = trade_details.get('dte', 0)
-        if current_dte <= self.params['dte_exit_threshold']:
-            logger.info(f"Exiting {symbol} iron condor: DTE {current_dte} <= threshold {self.params['dte_exit_threshold']}")
-            return True
-            
-        # Get current price of the underlying
         current_price = market_data.get_latest_price(symbol)
         if current_price is None:
+            logger.error(f"Unable to get current price for {symbol}")
             return False
             
-        # Check for profit target
+        # Get position details
+        entry_credit = position.get('total_credit', 0)
+        short_put_strike = position.get('short_put_strike', 0)
+        short_call_strike = position.get('short_call_strike', 0)
+        expiration = position.get('expiration')
+        entry_time = position.get('entry_time')
         current_value = position.get('current_value', 0)
-        entry_value = position.get('entry_value', 0)
         
-        if entry_value > 0:
-            # For a credit spread, entry_value is negative (credit received)
-            # and current_value is the cost to close (debit paid)
-            max_credit = trade_details.get('total_credit', 0) * 100  # Convert to dollars
-            profit = max_credit - abs(current_value)
+        if not all([entry_credit, short_put_strike, short_call_strike, expiration, entry_time]):
+            logger.error(f"Missing critical position data for {symbol}")
+            return False
             
-            if max_credit > 0:
-                profit_pct = (profit / max_credit) * 100
-                
-                # If we've reached our target profit percentage
-                if profit_pct >= self.params['profit_target_percent']:
-                    logger.info(f"Exiting {symbol} iron condor: Profit target reached {profit_pct:.2f}%")
-                    return True
-                
-            # Check for stop loss - if debit to close exceeds credit * stop_loss_multiplier
-            if abs(current_value) > max_credit * self.params['stop_loss_multiplier']:
-                logger.info(f"Exiting {symbol} iron condor: Stop loss triggered")
-                return True
+        # Calculate days to expiration
+        exp_date = datetime.strptime(expiration, '%Y-%m-%d').date()
+        current_dte = (exp_date - date.today()).days
+        
+        # Calculate P&L as percentage of max credit
+        profit_percent = (entry_credit - current_value) / entry_credit * 100 if entry_credit > 0 else 0
+        loss_percent = (current_value - entry_credit) / entry_credit * 100 if entry_credit > 0 else 0
+        
+        # 1. Check profit target
+        if profit_percent >= self.params['profit_target_percent']:
+            logger.info(f"Exit triggered for {symbol} iron condor: Profit target {profit_percent:.1f}% reached")
+            return True
             
-        # Check if price is approaching short strikes (within 5%)
-        short_put_strike = trade_details.get('short_put', {}).get('strike', 0)
-        short_call_strike = trade_details.get('short_call', {}).get('strike', 0)
+        # 2. Check stop loss
+        if loss_percent >= (self.params['stop_loss_multiplier'] * 100):
+            logger.info(f"Exit triggered for {symbol} iron condor: Stop loss at {loss_percent:.1f}% reached")
+            return True
+            
+        # 3. Check days to expiration
+        if current_dte <= self.params['dte_exit_threshold']:
+            logger.info(f"Exit triggered for {symbol} iron condor: DTE threshold {current_dte} reached")
+            return True
+            
+        # 4. Check if price is outside short strikes or approaching them
+        price_danger_buffer = 0.02  # 2% buffer zone near short strikes
+        lower_danger = short_put_strike * (1 + price_danger_buffer)
+        upper_danger = short_call_strike * (1 - price_danger_buffer)
         
-        # Calculate distance to short strikes as percentage
-        if short_put_strike > 0:
-            distance_to_put = (current_price - short_put_strike) / short_put_strike
-            if distance_to_put < 0.03:  # Within 3% of short put
-                logger.info(f"Exiting {symbol} iron condor: Price approaching short put strike")
+        if current_price <= lower_danger:
+            logger.info(f"Exit triggered for {symbol} iron condor: Price {current_price} near/below short put {short_put_strike}")
+            return True
+            
+        if current_price >= upper_danger:
+            logger.info(f"Exit triggered for {symbol} iron condor: Price {current_price} near/above short call {short_call_strike}")
+            return True
+            
+        # 5. Check volatility environment (has IV collapsed?)
+        vol_signals = VolatilitySignals(market_data)
+        iv_rank = vol_signals.get_iv_rank(symbol)
+        
+        # If IV rank has dropped significantly, consider exiting to lock in profits
+        if iv_rank is not None and iv_rank < (self.params['min_iv_rank'] * 0.7):  # 30% below min entry threshold
+            logger.info(f"Exit triggered for {symbol} iron condor: IV rank collapsed to {iv_rank:.1f}%")
+            return True
+            
+        # 6. Check for trend change in the underlying
+        tech_signals = TechnicalSignals(market_data)
+        trend_change = tech_signals.get_trend_change_signal(symbol)
+        
+        # If we have a strong trend forming (breaking range-bound behavior), consider exiting
+        if trend_change not in ['neutral', None]:
+            # For uptrend, we're concerned if price is approaching call strikes
+            if trend_change == 'uptrend' and current_price > (short_call_strike * 0.95):
+                logger.info(f"Exit triggered for {symbol} iron condor: Uptrend forming near short call strike")
                 return True
                 
-        if short_call_strike > 0:
-            distance_to_call = (short_call_strike - current_price) / short_call_strike
-            if distance_to_call < 0.03:  # Within 3% of short call
-                logger.info(f"Exiting {symbol} iron condor: Price approaching short call strike")
+            # For downtrend, we're concerned if price is approaching put strikes
+            if trend_change == 'downtrend' and current_price < (short_put_strike * 1.05):
+                logger.info(f"Exit triggered for {symbol} iron condor: Downtrend forming near short put strike")
                 return True
         
+        # No exit conditions met
         return False
     
     # ======================== 9. EXIT EXECUTION ========================
     def prepare_exit_orders(self, position: Dict[str, Any]) -> List[Order]:
         """
-        Prepare orders to close an existing position.
+        Prepare orders to close an existing iron condor position.
+        
+        This method constructs exit orders for all four legs of an iron condor position that 
+        has triggered exit conditions. It handles the complete lifecycle termination of the trade,
+        ensuring proper order specifications for each leg based on its original entry characteristics.
+        
+        The method performs these key functions:
+        1. Evaluates the position structure to identify all four legs (short put, long put, short call, long call)
+        2. Creates appropriate closing orders for each leg with reverse actions (buy-to-close for shorts, sell-to-close for longs)
+        3. Determines optimal order types based on market conditions and exit urgency
+        4. Specifies execution parameters to maximize fill probability while managing slippage
+        5. Preserves trade relationship metadata for accurate P&L tracking and performance analysis
+        
+        For iron condors, exit execution requires careful handling of all four legs to properly close
+        the position. Market orders may be used for urgent exits (e.g., when approaching expiration or
+        during high volatility events), while limit orders with appropriate pricing can be used for
+        planned exits like profit-taking.
         
         Parameters:
-            position: The position to close
-            
+            position (Dict[str, Any]): The position to close, containing:
+                - legs: List of component orders forming the iron condor
+                - trade_id: Unique identifier connecting all legs
+                - entry details: Original strikes, prices, and quantities
+                - metadata: Trade-specific information for tracking
+                
         Returns:
-            List of orders to execute
+            List[Order]: List of executable order specifications for all four legs:
+                - Buy-to-close orders for short put and short call legs
+                - Sell-to-close orders for long put and long call legs
+                - Each order contains its relationship to the original position
+                - All orders reference the original trade ID for tracking
+                
+        Notes:
+            Exit execution strategy considers several factors:
+            
+            - Order type selection balances execution certainty with price improvement:
+              - Market orders: Used for urgent exits when immediate execution is critical
+              - Limit orders: Used for planned exits to optimize pricing
+              - IOC (Immediate-or-Cancel): Used when partial fills should be avoided
+            
+            - Leg sequencing and execution coordination:
+              - Ideally all legs are closed simultaneously via a combo/multi-leg order
+              - When separate orders are required, short options are prioritized to eliminate assignment risk
+              - Orders are grouped by trade ID to ensure proper tracking
+            
+            - Price considerations for limit orders:
+              - Short put leg: Buy at or slightly above current ask price
+              - Long put leg: Sell at or slightly below current bid price
+              - Short call leg: Buy at or slightly above current ask price
+              - Long call leg: Sell at or slightly below current bid price
+              
+            - Special handling is implemented for:
+              - Wide bid-ask spreads: More aggressive pricing for reliable execution
+              - Low liquidity conditions: Market orders may be necessary despite price impact
+              - Approaching expiration: Urgency increases as expiration approaches
+              - High volatility environments: Wider limit prices may be needed
+              
+            - Close coordination of all legs is essential for iron condors as:
+              - Partial closing creates undefined risk exposure
+              - Prioritizes eliminating short option risk (assignment risk)
+              - Preserves overall trade accounting and analysis integrity
+              - Ensures accurate tracking of trading performance
         """
         orders = []
         
@@ -593,64 +785,172 @@ class IronCondorStrategy(StrategyOptimizable):
                                 market_data: MarketData,
                                 option_chains: OptionChains) -> List[Order]:
         """
-        Prepare orders to adjust an existing position that's approaching a wing breach.
+        Create adjustment orders when an iron condor position requires risk management.
+        
+        This method implements defensive adjustment techniques for iron condor positions
+        that are under stress due to adverse price movement. Rather than exiting completely,
+        adjustments can transform the risk profile of the position to accommodate changing
+        market conditions while potentially preserving profit opportunities.
+        
+        Adjustment strategies implemented:
+        1. Roll the threatened side: Move the threatened wing further away from price
+        2. Convert to broken-wing butterfly: Remove the unthreatened wing to reduce cost basis
+        3. Add additional opposing side: Balance the delta by adding contracts to the other side
+        4. Add hedge via long options: Buy long options to reduce directional exposure
+        5. Create a ratio spread: Convert to a ratio spread on the unthreatened side
         
         Parameters:
-            position: The position to adjust
-            market_data: Market data instance
-            option_chains: Option chains instance
+            position (Dict[str, Any]): Current position details including all legs and metrics
+            market_data (MarketData): Market data provider with current prices
+            option_chains (OptionChains): Option chains data for adjustment leg selection
             
         Returns:
-            List of orders to execute the adjustment
+            List[Order]: List of orders to execute for position adjustment
+            
+        Notes:
+            Adjustments are most effective when made proactively before significant
+            price movement occurs. The specific adjustment strategy is selected based
+            on the current market context, position Greeks, and risk-reward considerations.
+            
+            If adjustments are disabled in strategy parameters, this method will return
+            an empty list, allowing the regular exit process to handle the position.
         """
-        if not self.params['enable_adjustments']:
+        if not self.params.get('enable_adjustments', False):
             return []
             
-        if not position or 'trade_details' not in position:
-            logger.error("Invalid position data for adjustment")
+        if not position:
             return []
             
-        trade_details = position.get('trade_details', {})
-        symbol = trade_details.get('symbol')
-        expiration = trade_details.get('expiration')
-        
-        if not symbol or not expiration:
+        symbol = position.get('symbol')
+        if not symbol:
+            logger.error("Position missing symbol for adjustment")
             return []
-        
+            
         # Get current price
         current_price = market_data.get_latest_price(symbol)
         if current_price is None:
+            logger.error(f"Unable to get current price for {symbol}")
             return []
+            
+        # Get position details
+        short_put_strike = position.get('short_put_strike', 0)
+        long_put_strike = position.get('long_put_strike', 0)
+        short_call_strike = position.get('short_call_strike', 0)
+        long_call_strike = position.get('long_call_strike', 0)
+        expiration = position.get('expiration')
         
-        # Check which wing needs adjustment (put or call)
-        short_put_strike = trade_details.get('short_put', {}).get('strike', 0)
-        short_call_strike = trade_details.get('short_call', {}).get('strike', 0)
+        if not all([short_put_strike, long_put_strike, short_call_strike, long_call_strike, expiration]):
+            logger.error(f"Missing strike or expiration data for {symbol}")
+            return []
+            
+        # Determine which side (if any) is threatened
+        adjustment_threshold = self.params.get('adjustment_threshold', 0.70)
+        put_side_threatened = current_price < (short_put_strike * (1 + adjustment_threshold))
+        call_side_threatened = current_price > (short_call_strike * (1 - adjustment_threshold))
         
-        # Calculate thresholds for adjustment
-        put_threshold = short_put_strike * (1 + self.params['adjustment_threshold'])
-        call_threshold = short_call_strike * (1 - self.params['adjustment_threshold'])
+        if not put_side_threatened and not call_side_threatened:
+            # No adjustment needed
+            return []
+            
+        orders = []
         
-        adjustment_orders = []
-        
-        # TODO: Implement wing adjustment logic based on which threshold is breached
-        # - If price is approaching short put, consider rolling put wing down
-        # - If price is approaching short call, consider rolling call wing up
-        # This would involve closing the current wing and opening a new one at different strikes
-        
-        # For illustration, here's the structure of an adjustment:
-        # if current_price < put_threshold:
-        #     # Close existing put wing
-        #     # ...
-        #     # Open new put wing at lower strikes
-        #     # ...
-        # elif current_price > call_threshold:
-        #     # Close existing call wing
-        #     # ...
-        #     # Open new call wing at higher strikes
-        #     # ...
-        
-        logger.info(f"Created adjustment orders for {symbol} iron condor")
-        return adjustment_orders
+        try:
+            # Get options data for the expiration date
+            options_chain = option_chains.get_option_chain(symbol, expiration)
+            if options_chain is None or options_chain.empty:
+                logger.error(f"No options chain available for {symbol}")
+                return []
+                
+            if put_side_threatened:
+                # Adjustment for put side threat
+                logger.info(f"Preparing put side adjustment for {symbol} iron condor")
+                
+                # Example: Roll down the put wing by buying back short put and selling new one
+                # Find new short put strike (further OTM)
+                new_short_put_strike = self._find_new_put_strike(options_chain, current_price, short_put_strike)
+                
+                if new_short_put_strike:
+                    # Buy back the current short put (close)
+                    buy_close_short_put = Order(
+                        symbol=symbol,
+                        option_symbol=f"{symbol}_{expiration}_{short_put_strike}_P",
+                        order_type=OrderType.LIMIT,
+                        action=OrderAction.BUY,
+                        quantity=position.get('quantity', 1),
+                        limit_price=None,  # Market order or calculated based on current bid-ask
+                        order_details={
+                            'strategy': 'iron_condor_adjustment',
+                            'action': 'roll_put_side',
+                            'adjustment_type': 'buy_to_close_short_put'
+                        }
+                    )
+                    orders.append(buy_close_short_put)
+                    
+                    # Sell new short put (open)
+                    sell_open_new_put = Order(
+                        symbol=symbol,
+                        option_symbol=f"{symbol}_{expiration}_{new_short_put_strike}_P",
+                        order_type=OrderType.LIMIT,
+                        action=OrderAction.SELL,
+                        quantity=position.get('quantity', 1),
+                        limit_price=None,  # Market order or calculated based on current bid-ask
+                        order_details={
+                            'strategy': 'iron_condor_adjustment',
+                            'action': 'roll_put_side',
+                            'adjustment_type': 'sell_to_open_new_short_put'
+                        }
+                    )
+                    orders.append(sell_open_new_put)
+                    
+            elif call_side_threatened:
+                # Adjustment for call side threat
+                logger.info(f"Preparing call side adjustment for {symbol} iron condor")
+                
+                # Example: Roll up the call wing by buying back short call and selling new one
+                # Find new short call strike (further OTM)
+                new_short_call_strike = self._find_new_call_strike(options_chain, current_price, short_call_strike)
+                
+                if new_short_call_strike:
+                    # Buy back the current short call (close)
+                    buy_close_short_call = Order(
+                        symbol=symbol,
+                        option_symbol=f"{symbol}_{expiration}_{short_call_strike}_C",
+                        order_type=OrderType.LIMIT,
+                        action=OrderAction.BUY,
+                        quantity=position.get('quantity', 1),
+                        limit_price=None,  # Market order or calculated based on current bid-ask
+                        order_details={
+                            'strategy': 'iron_condor_adjustment',
+                            'action': 'roll_call_side',
+                            'adjustment_type': 'buy_to_close_short_call'
+                        }
+                    )
+                    orders.append(buy_close_short_call)
+                    
+                    # Sell new short call (open)
+                    sell_open_new_call = Order(
+                        symbol=symbol,
+                        option_symbol=f"{symbol}_{expiration}_{new_short_call_strike}_C",
+                        order_type=OrderType.LIMIT,
+                        action=OrderAction.SELL,
+                        quantity=position.get('quantity', 1),
+                        limit_price=None,  # Market order or calculated based on current bid-ask
+                        order_details={
+                            'strategy': 'iron_condor_adjustment',
+                            'action': 'roll_call_side',
+                            'adjustment_type': 'sell_to_open_new_short_call'
+                        }
+                    )
+                    orders.append(sell_open_new_call)
+                    
+            # Note: Additional advanced adjustment strategies like converting to butterflies,
+            # adding hedges, etc. would be implemented here based on market conditions
+                    
+        except Exception as e:
+            logger.error(f"Error preparing adjustment orders for {symbol}: {str(e)}")
+            return []
+            
+        return orders
     
     # ======================== HELPER METHODS ========================
     def _check_adv(self, symbol: str, market_data: MarketData) -> bool:

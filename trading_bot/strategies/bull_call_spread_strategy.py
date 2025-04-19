@@ -4,8 +4,8 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Tuple, Optional
 
-from trading_bot.base.strategy import StrategyOptimizable
-from trading_bot.base.universe import Universe
+from trading_bot.strategies.strategy_template import StrategyOptimizable
+from trading_bot.market.universe import Universe
 from trading_bot.market.market_data import MarketData
 from trading_bot.market.option_chains import OptionChains
 from trading_bot.orders.order_manager import OrderManager
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class BullCallSpreadStrategy(StrategyOptimizable):
     """
-    Bull Call Spread Strategy
+    Bull Call Spread Options Strategy
     
     This strategy involves buying a call option at a lower strike price and selling a call option
     at a higher strike price with the same expiration date. This creates a debit spread that
@@ -31,6 +31,11 @@ class BullCallSpreadStrategy(StrategyOptimizable):
     - Requires less capital than buying calls outright
     - Benefits from moderately bullish price movement
     - Mitigates time decay impact compared to single calls
+    
+    Attributes:
+        params (Dict[str, Any]): Dictionary of strategy parameters
+        name (str): Strategy name, defaults to 'bull_call_spread'
+        version (str): Strategy version, defaults to '1.0.0'
     """
     
     # ======================== 1. DEFAULT PARAMETERS ========================
@@ -84,7 +89,20 @@ class BullCallSpreadStrategy(StrategyOptimizable):
     
     # ======================== 2. UNIVERSE DEFINITION ========================
     def define_universe(self, market_data: MarketData) -> Universe:
-        """Define the universe of stocks to trade based on criteria."""
+        """
+        Define the universe of stocks to trade based on criteria.
+        
+        This method filters the available stocks based on:
+        1. Price range set in parameters
+        2. Option liquidity (volume and open interest)
+        3. Technical criteria (bullish trend)
+        
+        Parameters:
+            market_data (MarketData): Market data instance containing price data
+            
+        Returns:
+            Universe: A Universe object containing the filtered symbols
+        """
         universe = Universe()
         
         # Filter by price range
@@ -121,10 +139,16 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Check if the symbol meets the selection criteria for the strategy.
         
+        Evaluates a symbol against multiple criteria:
+        - Sufficient historical data
+        - IV percentile within desired range
+        - Available option chains with suitable expirations
+        - Bullish trend confirmation
+        
         Parameters:
-            symbol: Symbol to check
-            market_data: Market data instance
-            option_chains: Option chains instance
+            symbol (str): Symbol to check
+            market_data (MarketData): Market data instance
+            option_chains (OptionChains): Option chains instance
             
         Returns:
             bool: True if symbol meets all criteria, False otherwise
@@ -187,13 +211,19 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Select the appropriate option contracts for the bull call spread.
         
+        Identifies the optimal call options for both legs of the spread based on:
+        1. Finding appropriate expiration date
+        2. Selecting strike prices based on parameters (delta, OTM percentage, or price range)
+        3. Calculating the spread's risk/reward characteristics
+        
         Parameters:
-            symbol: The stock symbol
-            market_data: Market data instance
-            option_chains: Option chains instance
+            symbol (str): The stock symbol
+            market_data (MarketData): Market data instance
+            option_chains (OptionChains): Option chains instance
             
         Returns:
-            Dict with selected option contracts
+            Dict[str, Any]: Dictionary containing selected option contracts and trade details,
+                           or empty dict if no suitable contracts found
         """
         # Get current price
         current_price = market_data.get_latest_price(symbol)
@@ -259,12 +289,18 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Calculate the number of spreads to trade based on risk parameters.
         
+        Determines the optimal position size by:
+        1. Calculating max risk per spread
+        2. Determining max risk amount based on portfolio size
+        3. Calculating number of spreads within risk limits
+        4. Ensuring position size is within overall portfolio allocation limits
+        
         Parameters:
-            trade_details: Details of the selected option spread
-            position_sizer: Position sizer instance
+            trade_details (Dict[str, Any]): Details of the selected option spread
+            position_sizer (PositionSizer): Position sizer instance for portfolio info
             
         Returns:
-            int: Number of spreads to trade
+            int: Number of spreads to trade (0 if invalid risk calculation)
         """
         # Calculate max risk per spread
         max_risk_per_spread = trade_details['max_loss'] * 100  # Convert to dollars (per contract)
@@ -300,12 +336,16 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Prepare orders for executing the bull call spread.
         
+        Creates the necessary orders for both legs of the spread:
+        1. Long call order at lower strike
+        2. Short call order at higher strike
+        
         Parameters:
-            trade_details: Details of the selected spread
-            num_spreads: Number of spreads to trade
+            trade_details (Dict[str, Any]): Details of the selected spread
+            num_spreads (int): Number of spreads to trade
             
         Returns:
-            List of orders to execute
+            List[Order]: List of orders to execute, empty if num_spreads <= 0
         """
         if num_spreads <= 0:
             return []
@@ -360,12 +400,18 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Check if exit conditions are met for an existing position.
         
+        Evaluates position against multiple exit criteria:
+        1. Days to expiration threshold
+        2. Profit target reached
+        3. Loss limit reached
+        4. Trend reversal (if enabled)
+        
         Parameters:
-            position: The current position
-            market_data: Market data instance
+            position (Dict[str, Any]): The current position data
+            market_data (MarketData): Market data instance
             
         Returns:
-            bool: True if exit conditions are met
+            bool: True if exit conditions are met, False otherwise
         """
         if not position or 'trade_details' not in position:
             logger.error("Invalid position data for exit check")
@@ -417,11 +463,15 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Prepare orders to close an existing position.
         
+        Creates the necessary orders to close both legs of the spread:
+        1. Sell order for the long call
+        2. Buy order for the short call
+        
         Parameters:
-            position: The position to close
+            position (Dict[str, Any]): The position to close
             
         Returns:
-            List of orders to execute
+            List[Order]: List of orders to execute
         """
         orders = []
         
@@ -465,14 +515,19 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Prepare hedge orders for portfolio protection.
         
+        Creates protective positions to reduce overall portfolio risk:
+        1. Evaluates current portfolio exposure 
+        2. Decides on hedge approach based on parameters
+        3. Typically uses SPY puts for broad market protection
+        
         Parameters:
-            positions: Current positions
-            market_data: Market data instance
-            option_chains: Option chains instance
-            position_sizer: Position sizer instance
+            positions (List[Dict[str, Any]]): Current positions
+            market_data (MarketData): Market data instance
+            option_chains (OptionChains): Option chains instance
+            position_sizer (PositionSizer): Position sizer instance
             
         Returns:
-            List of hedge orders
+            List[Order]: List of hedge orders to execute
         """
         if not self.params['apply_hedge']:
             return []
@@ -551,7 +606,19 @@ class BullCallSpreadStrategy(StrategyOptimizable):
     
     # ======================== 10. HELPER METHODS ========================
     def _check_option_liquidity(self, symbol: str, option_chains: OptionChains) -> bool:
-        """Check if options for a symbol meet liquidity criteria."""
+        """
+        Check if options for a symbol meet liquidity criteria.
+        
+        Verifies that options have sufficient volume and open interest
+        according to the parameters.
+        
+        Parameters:
+            symbol (str): Symbol to check
+            option_chains (OptionChains): Option chains data
+            
+        Returns:
+            bool: True if options meet liquidity criteria, False otherwise
+        """
         try:
             chains = option_chains.get_option_chain(symbol)
             if chains is None or chains.empty:
@@ -568,7 +635,19 @@ class BullCallSpreadStrategy(StrategyOptimizable):
             return False
     
     def _has_bullish_trend(self, symbol: str, tech_signals: TechnicalSignals) -> bool:
-        """Check if a symbol is in a bullish trend."""
+        """
+        Check if a symbol is in a bullish trend.
+        
+        Uses the configured trend indicator to determine if the symbol
+        is showing bullish characteristics.
+        
+        Parameters:
+            symbol (str): Symbol to check
+            tech_signals (TechnicalSignals): Technical signals instance
+            
+        Returns:
+            bool: True if symbol is in a bullish trend, False otherwise
+        """
         if self.params['trend_indicator'] == 'ema_20_50':
             return tech_signals.is_ema_bullish(symbol, short_period=20, long_period=50)
         elif self.params['trend_indicator'] == 'sma_50_200':
@@ -579,7 +658,21 @@ class BullCallSpreadStrategy(StrategyOptimizable):
     
     def _select_expiration(self, symbol: str, option_chains: OptionChains, 
                           min_dte=None, max_dte=None) -> str:
-        """Select the appropriate expiration date."""
+        """
+        Select the appropriate expiration date.
+        
+        Finds the expiration date closest to the target DTE within
+        the specified min/max range.
+        
+        Parameters:
+            symbol (str): Symbol to get expiration for
+            option_chains (OptionChains): Option chains data
+            min_dte (int, optional): Minimum days to expiration
+            max_dte (int, optional): Maximum days to expiration
+            
+        Returns:
+            str: Selected expiration date in 'YYYY-MM-DD' format, empty if none found
+        """
         if min_dte is None:
             min_dte = self.params['min_dte']
         if max_dte is None:
@@ -613,7 +706,19 @@ class BullCallSpreadStrategy(StrategyOptimizable):
             return ""
     
     def _select_strikes_by_delta(self, call_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
-        """Select strikes based on delta targets."""
+        """
+        Select strikes based on delta targets.
+        
+        Finds call option strikes with deltas closest to the target values.
+        
+        Parameters:
+            call_options (pd.DataFrame): DataFrame of call options
+            current_price (float): Current price of the underlying
+            
+        Returns:
+            Tuple[Dict, Dict]: Tuple of (long call data, short call data),
+                              returns (None, None) if suitable options not found
+        """
         if 'delta' not in call_options.columns:
             logger.warning("Delta data not available, falling back to OTM percentage method")
             return self._select_strikes_by_otm_percentage(call_options, current_price)
@@ -641,7 +746,19 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         return long_call, short_call
     
     def _select_strikes_by_otm_percentage(self, call_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
-        """Select strikes based on OTM percentage."""
+        """
+        Select strikes based on OTM percentage.
+        
+        Finds call option strikes at specified percentages out-of-the-money.
+        
+        Parameters:
+            call_options (pd.DataFrame): DataFrame of call options
+            current_price (float): Current price of the underlying
+            
+        Returns:
+            Tuple[Dict, Dict]: Tuple of (long call data, short call data),
+                              returns (None, None) if suitable options not found
+        """
         target_long_strike = current_price * (1 + self.params['otm_percentage'])
         target_short_strike = current_price * (1 + self.params['otm_percentage'] + self.params['short_call_otm_extra'])
         
@@ -667,7 +784,20 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         return long_call, short_call
     
     def _select_strikes_by_price_range(self, call_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
-        """Select strikes based on price range and spread width."""
+        """
+        Select strikes based on price range and spread width.
+        
+        Finds a strike close to at-the-money for the long call, and
+        another strike approximately spread_width higher for the short call.
+        
+        Parameters:
+            call_options (pd.DataFrame): DataFrame of call options
+            current_price (float): Current price of the underlying
+            
+        Returns:
+            Tuple[Dict, Dict]: Tuple of (long call data, short call data),
+                              returns (None, None) if suitable options not found
+        """
         # Get the ATM strike
         atm_strike = get_atm_strike(current_price, call_options['strike'].unique())
         
@@ -695,7 +825,15 @@ class BullCallSpreadStrategy(StrategyOptimizable):
 
     # ======================== OPTIMIZATION METHODS ========================
     def get_optimization_params(self) -> Dict[str, Any]:
-        """Define parameters that can be optimized and their ranges."""
+        """
+        Define parameters that can be optimized and their ranges.
+        
+        Specifies which parameters can be optimized during backtesting,
+        along with their types, allowed ranges, and step sizes.
+        
+        Returns:
+            Dict[str, Any]: Dictionary of parameter specifications for optimization
+        """
         return {
             'target_dte': {'type': 'int', 'min': 20, 'max': 60, 'step': 5},
             'spread_width': {'type': 'int', 'min': 1, 'max': 10, 'step': 1},
@@ -711,11 +849,14 @@ class BullCallSpreadStrategy(StrategyOptimizable):
         """
         Evaluate strategy performance for optimization.
         
+        Calculates a performance score based on backtest results for parameter optimization.
+        The score incorporates Sharpe ratio with penalties for drawdowns and rewards for high win rates.
+        
         Parameters:
-            backtest_results: Results from backtest
+            backtest_results (Dict[str, Any]): Results from backtest
             
         Returns:
-            float: Performance score
+            float: Performance score (higher is better)
         """
         # Calculate Sharpe ratio with a penalty for max drawdown
         if 'sharpe_ratio' not in backtest_results or 'max_drawdown' not in backtest_results:

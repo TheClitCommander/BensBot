@@ -13,7 +13,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Union, Any
 
-from trading_bot.strategies.base_strategy import BaseOptionsStrategy
+from trading_bot.strategies.strategy_template import StrategyOptimizable as BaseOptionsStrategy
 from trading_bot.utils.strangle_utils import (
     calculate_strangle_cost, calculate_strangle_breakeven_points,
     calculate_strangle_pnl, find_strangle_strikes, find_strangle_by_otm_pct,

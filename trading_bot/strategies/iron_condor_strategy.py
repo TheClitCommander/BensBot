@@ -13,8 +13,8 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any, Tuple, Optional
 
-from trading_bot.base.strategy import StrategyOptimizable
-from trading_bot.base.universe import Universe
+from trading_bot.strategies.strategy_template import StrategyOptimizable
+from trading_bot.market.universe import Universe
 from trading_bot.market.market_data import MarketData
 from trading_bot.market.option_chains import OptionChains
 from trading_bot.orders.order_manager import OrderManager

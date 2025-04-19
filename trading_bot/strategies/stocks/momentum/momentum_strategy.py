@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Momentum Strategy - Captures continued price movement by buying assets that have
-shown strong recent performance and selling those that have underperformed.
+Momentum Strategy Module
+
+This module implements a momentum-based trading strategy that capitalizes on the 
+continuance of existing price trends in the market.
+
+The momentum strategy is based on the empirical observation that assets which have 
+performed well (or poorly) in the recent past tend to continue performing well (or poorly) 
+in the near future. This phenomenon, often called price momentum, has been documented 
+across various asset classes and time periods.
+
+Key concepts implemented in this strategy:
+1. Relative Strength Index (RSI) to identify overbought/oversold conditions
+2. Rate of Change (ROC) to measure price momentum
+3. Average Directional Index (ADX) to gauge trend strength
+4. Volatility-adjusted momentum to normalize across different assets
+5. Dynamic stop-loss and take-profit levels using Average True Range (ATR)
 """
 
 import numpy as np
@@ -18,23 +32,66 @@ logger = logging.getLogger(__name__)
 
 class MomentumStrategy(StockBaseStrategy):
     """
-    Momentum trading strategy implementation that identifies and trades based on
-    price momentum and trend strength.
+    Momentum Trading Strategy
+    
+    This strategy identifies and trades stocks displaying strong momentum characteristics,
+    entering positions in the direction of the established trend while using technical 
+    indicators to filter for high-probability momentum continuation setups.
+    
+    Key characteristics:
+    - Trend-following approach that aims to capture directional price movements
+    - Uses multiple technical indicators for signal confirmation and filtering
+    - Incorporates volatility adjustments to normalize momentum across assets
+    - Implements dynamic position sizing and risk management based on ATR
+    - Can operate in both single-stock analysis or cross-sectional ranking mode
+    
+    Key indicators and their roles:
+    - Rate of Change (ROC): Primary momentum measure showing the velocity of price change
+    - Relative Strength Index (RSI): Identifies overbought/oversold conditions and momentum divergence
+    - Average Directional Index (ADX): Confirms trend strength to avoid range-bound markets
+    - Plus/Minus Directional Indicators (+DI/-DI): Determines trend direction alongside ADX
+    - Volatility-adjusted momentum: Normalizes momentum signals across assets with different volatility profiles
+    - Volume analysis: Confirms price movements with proportional volume support
+    
+    Signal generation methodology:
+    - BUY signals occur when RSI rebounds from oversold conditions with rising momentum and ADX confirmation
+    - SELL signals trigger from overbought RSI readings, declining momentum, or reversal patterns
+    - Confidence scoring incorporates multiple indicator alignment and trend strength metrics
+    - Position sizing scales with signal strength, volatility, and account risk parameters
+    
+    Ideal market conditions:
+    - Strong trending markets (particularly bullish environments)
+    - Lower volatility periods allowing trends to develop
+    - Liquid markets with sufficient trading volume
+    - Markets with sector/industry rotation providing new momentum opportunities
+    
+    Limitations:
+    - Underperforms in choppy, sideways, or mean-reverting markets
+    - Subject to momentum crashes during sudden market regime changes
+    - May have delayed entries as confirmation signals develop
+    - Performance varies significantly across different market regimes
     """
     
     # Default parameters specific to momentum trading
     DEFAULT_MOMENTUM_PARAMS = {
-        "lookback_period": 14,
-        "overbought": 70,
-        "oversold": 30,
-        "adx_threshold": 25,
-        "trend_strength_threshold": 0.05,
-        "use_volatility_adjustment": True,
-        "cross_sectional": False,
-        "signal_threshold": 0.0,
-        "volatility_lookback": 20,
-        "stop_loss_atr_multiple": 2.0,
-        "take_profit_atr_multiple": 3.0,
+        # Momentum calculation parameters
+        "lookback_period": 14,           # Period for calculating momentum indicators (typically 10-30 days)
+        "overbought": 70,                # RSI threshold to identify overbought conditions (70-80)
+        "oversold": 30,                  # RSI threshold to identify oversold conditions (20-30)
+        
+        # Trend identification parameters
+        "adx_threshold": 25,             # Minimum ADX value to confirm trend strength (20-30)
+        "trend_strength_threshold": 0.05, # Minimum price change % to confirm trend
+        
+        # Signal generation parameters
+        "use_volatility_adjustment": True, # Whether to normalize momentum by volatility
+        "cross_sectional": False,         # Whether to rank stocks against each other
+        "signal_threshold": 0.0,          # Minimum signal strength to generate a trade
+        "volatility_lookback": 20,        # Period for volatility calculation
+        
+        # Risk management parameters
+        "stop_loss_atr_multiple": 2.0,    # Stop loss distance in ATR units
+        "take_profit_atr_multiple": 3.0,  # Take profit distance in ATR units
     }
     
     def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None,
@@ -43,9 +100,9 @@ class MomentumStrategy(StockBaseStrategy):
         Initialize the momentum strategy with configurable parameters.
         
         Args:
-            name: Strategy name
+            name: Strategy name 
             parameters: Strategy parameters (will be merged with default parameters)
-            metadata: Strategy metadata
+            metadata: Strategy metadata for tracking and identification
         """
         # Start with default stock parameters
         momentum_params = self.DEFAULT_STOCK_PARAMS.copy()
@@ -65,6 +122,10 @@ class MomentumStrategy(StockBaseStrategy):
     def get_parameter_space(self) -> Dict[str, List[Any]]:
         """
         Get parameter space for optimization.
+        
+        Defines the range of possible values for each parameter that can be
+        optimized during strategy backtesting, walk-forward analysis, or
+        parameter tuning.
         
         Returns:
             Dictionary mapping parameter names to lists of possible values
@@ -86,11 +147,23 @@ class MomentumStrategy(StockBaseStrategy):
         """
         Calculate momentum indicators for all symbols.
         
+        Computes a comprehensive set of technical indicators used to identify momentum
+        characteristics, trend strength, and potential entry and exit signals. These
+        indicators form the basis for the signal generation logic.
+        
+        Key indicators calculated:
+        - Price momentum: Percentage change over lookback period
+        - Rate of Change (ROC): Normalized price change
+        - Relative Strength Index (RSI): Oscillator identifying overbought/oversold conditions
+        - Average Directional Index (ADX): Measure of trend strength
+        - Average True Range (ATR): Volatility measure used for position sizing
+        - Volatility-adjusted momentum: Momentum normalized by historical volatility
+        
         Args:
             data: Dictionary mapping symbols to DataFrames with OHLCV data
             
         Returns:
-            Dictionary of calculated indicators for each symbol
+            Dictionary of calculated indicators for each symbol, organized by indicator type
         """
         indicators = {}
         
@@ -166,11 +239,28 @@ class MomentumStrategy(StockBaseStrategy):
         """
         Generate trading signals based on momentum indicators.
         
+        Analyzes the calculated indicators to identify high-probability momentum
+        trading opportunities. Signals are generated based on multiple confirmation
+        factors, with signal confidence determined by the strength and alignment
+        of various indicators.
+        
+        Signal generation logic:
+        - BUY signals: When RSI rebounds from oversold conditions with strong trend
+          confirmation from ADX and positive momentum
+        - SELL signals: When RSI reaches overbought levels, momentum turns negative,
+          or momentum shows signs of weakening after a strong uptrend
+        
+        Each signal includes:
+        - Entry price
+        - Stop-loss and take-profit levels calculated using ATR
+        - Signal confidence based on indicator alignment
+        - Metadata with indicator values for logging and analysis
+        
         Args:
             data: Dictionary mapping symbols to DataFrames with OHLCV data
             
         Returns:
-            Dictionary mapping symbols to Signal objects
+            Dictionary mapping symbols to Signal objects for execution
         """
         # Apply stock-specific filters from the base class
         filtered_data = self.filter_universe(data)
@@ -311,12 +401,20 @@ class MomentumStrategy(StockBaseStrategy):
         """
         Calculate a performance score for the generated signals.
         
+        Evaluates the expected performance of generated signals based on historical 
+        forward returns. This is used primarily for strategy optimization and 
+        parameter tuning during the development and backtesting phase.
+        
+        The performance calculation simulates the outcomes of the generated signals
+        using known forward price data and computes a Sharpe-like ratio to balance
+        returns against consistency.
+        
         Args:
-            signals: Generated signals
-            data: Input data
+            signals: Generated trading signals
+            data: Historical price data including forward periods
             
         Returns:
-            Performance score (higher is better)
+            Performance score (higher is better) based on risk-adjusted returns
         """
         if not signals:
             return 0.0
@@ -373,11 +471,21 @@ class MomentumStrategy(StockBaseStrategy):
         """
         Get compatibility score for this strategy in the given market regime.
         
+        Momentum strategies perform differently across various market conditions.
+        This method provides a quantitative measure of how well the strategy is
+        expected to perform in each market regime.
+        
+        The compatibility scores reflect empirical evidence that momentum strategies:
+        - Perform best in trending markets, especially bull markets
+        - Struggle in choppy, range-bound markets
+        - Can experience significant drawdowns during regime shifts
+        - May underperform during periods of extreme volatility
+        
         Args:
-            regime: Market regime
+            regime: Current market regime classification
             
         Returns:
-            Compatibility score (0-1, higher is better)
+            Compatibility score (0-1, higher indicates better compatibility)
         """
         # Regime compatibility scores
         compatibility = {

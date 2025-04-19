@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from typing import List, Dict, Any
 
 from trading_bot.strategies.strategy_ensemble import StrategyEnsemble, WeightingMethod, DynamicEnsemble
-from trading_bot.strategies.base_strategy import Strategy
+from trading_bot.strategies.strategy_template import StrategyTemplate as Strategy
 from trading_bot.strategies.macro_trend_strategy import MacroTrendStrategy
 from trading_bot.strategies.regime_aware_strategy import RegimeAwareStrategy, MarketRegime, RegimeDetector
 from trading_bot.backtesting.performance_metrics import calculate_comprehensive_metrics

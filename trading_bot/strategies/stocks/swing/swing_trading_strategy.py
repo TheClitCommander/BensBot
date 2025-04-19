@@ -28,6 +28,32 @@ class StockSwingTradingStrategy(StockBaseStrategy):
     
     It extends the StockBaseStrategy to incorporate stock-specific functionality
     like sector analysis and market breadth.
+    
+    Key features:
+    - Identifies and trades price swings during ongoing trends or market transitions
+    - Uses multiple timeframe analysis to confirm trend direction and strength
+    - Focuses on pullbacks to support in uptrends and resistance tests in downtrends
+    - Incorporates volume confirmation to validate price movements
+    - Implements dynamic position sizing based on ATR and price volatility
+    - Adjusts entry/exit criteria based on detected market regime
+    
+    Ideal market conditions:
+    - Trending markets with identifiable pullbacks
+    - Markets with defined support/resistance levels
+    - Moderate volatility environments allowing for price swings
+    - Liquid markets with sufficient volume to validate signals
+    
+    Limitations:
+    - May generate false signals in highly volatile or sideways markets
+    - Performance dependent on accurate support/resistance identification
+    - Less effective in markets with constant gap openings
+    - Requires proper risk management to account for overnight price changes
+    
+    Risk management:
+    - Uses ATR-based stop losses to adapt to individual stock volatility
+    - Implements dynamic take-profit targets based on price objectives
+    - Features trailing stops to lock in profits during strong moves
+    - Limits position sizes based on account risk parameters
     """
     
     # Default parameters specific to stock swing trading

@@ -215,17 +215,76 @@ class StrategyTemplate(abc.ABC):
 
 class StrategyOptimizable(StrategyTemplate):
     """
-    Base class for optimizable strategies.
+    Base class for trading strategies with parameter optimization capabilities.
     
-    This class extends the strategy template to add parameter optimization capabilities.
+    The StrategyOptimizable class extends the core StrategyTemplate by adding sophisticated
+    parameter optimization capabilities. It provides a framework for systematic strategy 
+    improvement through objective performance measurement and parameter space exploration.
+    
+    This class enables:
+    1. Defining searchable parameter spaces for strategy optimization
+    2. Evaluating strategy performance with different parameter combinations
+    3. Optimizing parameters to find optimal configurations
+    4. Measuring performance through customizable evaluation metrics
+    5. Maintaining separation between optimization and execution logic
+    
+    Key optimization capabilities include:
+    - Parameter space definition with constraints and granularity control
+    - Flexible evaluation functions for different optimization objectives
+    - Extensible optimization algorithm implementation
+    - Cross-validation support to prevent overfitting
+    - Performance comparison across parameter combinations
+    
+    Implementation considerations:
+    - Child classes must override get_parameter_space() to define optimizable parameters
+    - Child classes should implement _calculate_performance_score() with appropriate metrics
+    - The optimize() method can be extended with more sophisticated algorithms
+    - Consider computational efficiency when defining parameter spaces
+    - Beware of overfitting risks when optimizing with limited historical data
+    
+    Trading strategy optimization involves balancing several critical factors:
+    - Out-of-sample validation to ensure generalizability
+    - Computational efficiency for practical implementation
+    - Strategy robustness across different market regimes
+    - Sensitivity analysis to understand parameter importance
+    - Risk-adjusted performance metrics beyond raw returns
+    
+    Attributes:
+        name (str): Strategy identifier name
+        parameters (Dict[str, Any]): Current strategy parameters
+        metadata (Dict[str, Any]): Additional strategy metadata and state information
     """
     
     def get_parameter_space(self) -> Dict[str, List[Any]]:
         """
-        Define the parameter space for optimization.
+        Define the parameter space for strategy optimization.
+        
+        This method specifies the parameters that can be optimized and their
+        possible values. The parameter space is defined as a dictionary mapping
+        parameter names to lists of possible values.
+        
+        The parameter space definition should consider:
+        - Reasonable bounds for each parameter
+        - Appropriate granularity for numerical parameters
+        - Inclusion of only truly impactful parameters
+        - Computational feasibility of the resulting search space
         
         Returns:
-            Dictionary mapping parameter names to lists of possible values
+            Dict[str, List[Any]]: Dictionary mapping parameter names to lists of 
+                possible values. For example:
+                {
+                    'fast_ma_period': [5, 10, 15, 20, 25],
+                    'slow_ma_period': [20, 30, 40, 50, 60],
+                    'rsi_threshold': [25, 30, 35, 40],
+                    'stop_loss_pct': [0.02, 0.03, 0.04, 0.05]
+                }
+                
+        Notes:
+            - Override this method in child classes to define strategy-specific
+              parameter spaces
+            - Empty dictionary indicates no parameters to optimize
+            - Consider the combinatorial explosion when defining multiple parameters
+            - Parameters not included will remain fixed at their current values
         """
         # Override in subclasses
         return {}
@@ -234,12 +293,38 @@ class StrategyOptimizable(StrategyTemplate):
         """
         Evaluate strategy performance with the specified parameters.
         
-        Args:
-            parameters: Strategy parameters to evaluate
-            data: Input data for evaluation
+        This method temporarily applies a set of parameters to the strategy,
+        generates signals based on the input data, evaluates performance using
+        the _calculate_performance_score method, and then restores the original
+        parameters.
+        
+        The evaluation process:
+        1. Stores the current parameters
+        2. Applies the new parameters for testing
+        3. Generates signals using the strategy with new parameters
+        4. Calculates a performance score for these signals
+        5. Restores the original parameters
+        6. Returns the performance score
+        
+        Parameters:
+            parameters (Dict[str, Any]): Strategy parameters to evaluate
+            data (Dict[str, Any]): Input data for signal generation and evaluation,
+                usually historical price and indicator data
             
         Returns:
-            Performance score (higher is better)
+            float: Performance score where higher values indicate better performance.
+                The score can represent any appropriate metric such as:
+                - Risk-adjusted returns (e.g., Sharpe ratio)
+                - Absolute returns
+                - Win rate or profit factor
+                - Custom combination of multiple metrics
+                
+        Notes:
+            - This method is non-destructive - it preserves the strategy's original parameters
+            - The interpretation of the score depends on the implementation of
+              _calculate_performance_score in the child class
+            - Typically called many times during optimization
+            - Consider performance implications for computationally intensive strategies
         """
         # Save original parameters
         original_parameters = self.parameters.copy()
@@ -261,28 +346,79 @@ class StrategyOptimizable(StrategyTemplate):
     def _calculate_performance_score(self, signals: Dict[str, Signal], 
                                    data: Dict[str, Any]) -> float:
         """
-        Calculate a performance score for the generated signals.
+        Calculate a performance score for a set of generated signals.
         
-        Args:
-            signals: Generated signals
-            data: Input data
+        This method evaluates the quality of signals generated by the strategy,
+        typically by simulating trades based on the signals and calculating
+        performance metrics. The specific implementation depends on the strategy's
+        objectives and constraints.
+        
+        Common performance metrics include:
+        - Risk-adjusted returns (Sharpe ratio, Sortino ratio, Calmar ratio)
+        - Absolute returns or profits
+        - Win rate, profit factor, or expectancy
+        - Maximum drawdown or other risk measures
+        - Custom combinations of multiple metrics
+        
+        Parameters:
+            signals (Dict[str, Signal]): Dictionary mapping symbols to generated signals
+            data (Dict[str, Any]): Input data used for evaluation, typically including
+                historical price data to simulate signal execution
             
         Returns:
-            Performance score (higher is better)
+            float: Performance score where higher values indicate better performance
+                
+        Notes:
+            - Must be implemented by child classes
+            - The default implementation returns 0.0
+            - Consider including risk adjustment in the score calculation
+            - Balance between returns, risk, consistency, and robustness
+            - May implement walk-forward validation to prevent overfitting
+            - Can incorporate transaction costs and slippage for realistic evaluation
         """
         # Override in subclasses
         return 0.0
     
     def optimize(self, data: Dict[str, Any], iterations: int = 10) -> Tuple[Dict[str, Any], float]:
         """
-        Optimize strategy parameters.
+        Optimize strategy parameters to maximize performance.
         
-        Args:
-            data: Input data for optimization
-            iterations: Number of optimization iterations
+        This method explores the parameter space defined by get_parameter_space()
+        to find parameter combinations that maximize the performance score.
+        The default implementation uses simple random search, but subclasses
+        can implement more sophisticated optimization algorithms.
+        
+        The optimization process:
+        1. Defines the parameter space to search
+        2. Repeatedly:
+           a. Selects parameter combinations from the space
+           b. Evaluates the strategy performance with those parameters
+           c. Tracks the best performing parameters
+        3. Returns the best parameters found and their score
+        
+        Advanced optimization approaches that could be implemented:
+        - Grid search for exhaustive exploration of smaller parameter spaces
+        - Genetic algorithms for evolutionary optimization
+        - Bayesian optimization for efficient exploration
+        - Particle swarm optimization for complex spaces
+        - Simulated annealing for avoiding local optima
+        
+        Parameters:
+            data (Dict[str, Any]): Input data for optimization, typically
+                historical price and indicator data
+            iterations (int): Number of parameter combinations to evaluate
             
         Returns:
-            Tuple of (best parameters, best score)
+            Tuple[Dict[str, Any], float]: A tuple containing:
+                - The best performing parameters found
+                - The corresponding performance score
+                
+        Notes:
+            - Computationally intensive - consider runtime for large parameter spaces
+            - Beware of overfitting risks when optimizing on limited historical data
+            - Consider implementing cross-validation or walk-forward validation
+            - The default random search implementation can be extended or replaced
+            - Tracks previously evaluated parameter combinations to avoid duplication
         """
         # Get parameter space
         param_space = self.get_parameter_space()

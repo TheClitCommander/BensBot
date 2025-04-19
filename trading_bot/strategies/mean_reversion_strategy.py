@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Mean Reversion Strategy - Exploits the tendency of asset prices to revert to their
-long-term mean. Buys oversold assets and sells overbought assets.
+Mean Reversion Strategy Module
+
+This module implements a mean reversion trading strategy that capitalizes on the
+tendency of asset prices to return to their historical average or mean.
+
+Mean reversion is based on the theory that asset prices and returns eventually
+revert to their long-term average levels. This framework analyzes deviations from 
+statistical norms to identify potential reversal points, entering positions that 
+profit from the price movement back toward the mean.
+
+Key concepts implemented in this strategy:
+1. Z-score calculation to identify statistical extremes
+2. Quantitative assessment of price deviations from historical means
+3. Dynamic entry and exit thresholds based on statistical measurements
+4. Volatility filtering to adapt to changing market conditions
+5. Holding period management to control exposure time
 """
 
 import numpy as np
@@ -15,16 +29,30 @@ logger = logging.getLogger(__name__)
 
 class MeanReversionStrategy:
     """
-    Mean Reversion strategy that exploits the tendency of asset prices to revert to their mean.
+    Mean Reversion Trading Strategy
     
-    This strategy identifies assets that have deviated significantly from their historical average
-    and takes positions with the expectation that prices will revert back to that average.
+    This strategy identifies and capitalizes on temporary price deviations from historical
+    averages, entering counter-trend positions when assets become statistically overextended
+    with the expectation that prices will revert to their mean.
     
-    Features:
-    - Multiple lookback periods for calculating averages
-    - Z-score based signal generation
-    - Configurable entry and exit thresholds
-    - Volatility-adjusted position sizing
+    Key characteristics:
+    - Counter-trend approach that trades against price extremes
+    - Uses statistical measures (z-scores) to identify overbought/oversold conditions
+    - Implements adaptable entry and exit thresholds based on market conditions
+    - Includes volatility filtering to avoid trading during unstable periods
+    - Controls risk through predefined holding periods and position sizing
+    
+    Ideal market conditions:
+    - Range-bound or sideways markets with clear boundaries
+    - Markets with cyclical patterns and regular oscillations
+    - Lower volatility environments where mean reversion is more reliable
+    - Assets with stable fundamentals and established trading ranges
+    
+    Limitations:
+    - Vulnerable to strong trending markets and trend breakouts
+    - May enter positions too early during significant trend extensions
+    - Requires careful risk management to limit losses in runaway markets
+    - Performance varies significantly across different market regimes
     """
     
     def __init__(
@@ -38,16 +66,16 @@ class MeanReversionStrategy:
         name: str = "mean_reversion"
     ):
         """
-        Initialize the mean reversion strategy.
+        Initialize the mean reversion strategy with configurable parameters.
         
         Args:
-            lookback_period: Period for calculating mean and standard deviation
-            entry_z_score: Z-score threshold for trade entry
-            exit_z_score: Z-score threshold for trade exit
-            holding_period: Maximum holding period for trades
-            use_volatility_filter: Whether to filter based on volatility
-            volatility_lookback: Period for volatility calculation
-            name: Strategy name
+            lookback_period: Period for calculating mean and standard deviation (typically 10-30 days)
+            entry_z_score: Z-score threshold for trade entry (typically 1.5-3.0)
+            exit_z_score: Z-score threshold for trade exit (typically 0.0-1.0)
+            holding_period: Maximum holding period for trades in days
+            use_volatility_filter: Whether to filter based on volatility conditions
+            volatility_lookback: Period for volatility calculation (typically 20-60 days)
+            name: Strategy name for identification and logging
         """
         self.lookback_period = lookback_period
         self.entry_z_score = entry_z_score
@@ -67,11 +95,21 @@ class MeanReversionStrategy:
         """
         Calculate z-scores for the given price data.
         
+        Computes the statistical z-score for each asset, which measures how many standard
+        deviations a value is from the mean of a dataset. This is the core statistical
+        measure used to identify potential mean reversion opportunities.
+        
+        Z-scores are calculated by:
+        1. Computing returns for each asset
+        2. Calculating the rolling mean and standard deviation of returns
+        3. Measuring the distance of current returns from the rolling mean
+        4. Normalizing this distance by the rolling standard deviation
+        
         Args:
             prices: DataFrame of asset prices (index=dates, columns=assets)
             
         Returns:
-            DataFrame of z-scores
+            DataFrame of z-scores for each asset at each time point
         """
         # Calculate returns
         returns = prices.pct_change()
@@ -96,12 +134,27 @@ class MeanReversionStrategy:
         """
         Generate trade signals based on mean reversion indicators.
         
+        Analyzes z-scores and other indicators to identify potential mean reversion
+        opportunities. Signals are generated when assets become statistically 
+        overextended in either direction.
+        
+        Signal generation logic:
+        - LONG signals: When z-score becomes extremely negative (<-entry_z_score),
+          indicating the asset is statistically oversold
+        - SHORT signals: When z-score becomes extremely positive (>entry_z_score),
+          indicating the asset is statistically overbought
+        - EXIT signals: When z-score returns to a more normal range (based on exit_z_score)
+          or when the maximum holding period is reached
+        
+        Additional volatility filtering can be applied to avoid trading during periods
+        of excessive market volatility when mean reversion may be less reliable.
+        
         Args:
             prices: DataFrame of asset prices (index=dates, columns=assets)
-            market_data: Additional market data (optional)
+            market_data: Additional market data for contextual analysis (optional)
             
         Returns:
-            DataFrame of trade signals (1=buy, -1=sell, 0=neutral)
+            DataFrame of trade signals (1=buy, -1=sell, 0=neutral) for each asset at each time point
         """
         # Check if we have enough data
         if len(prices) < self.lookback_period:
@@ -160,12 +213,23 @@ class MeanReversionStrategy:
         """
         Optimize strategy parameters based on historical performance.
         
+        Conducts a systematic search for the best combination of strategy parameters by
+        testing multiple configurations against historical price data. The optimization
+        evaluates performance using risk-adjusted metrics such as the Sharpe ratio.
+        
+        Optimization process:
+        1. Tests combinations of lookback periods and z-score thresholds
+        2. Generates signals for each parameter set using historical data
+        3. Simulates trading performance for each configuration
+        4. Computes risk-adjusted return metrics (annualized return, volatility, Sharpe ratio)
+        5. Selects the parameter set with the highest Sharpe ratio
+        
         Args:
-            prices: DataFrame of asset prices
-            market_data: Additional market data (optional)
+            prices: DataFrame of asset prices for backtesting
+            market_data: Additional market data for contextual analysis (optional)
             
         Returns:
-            Dict of optimized parameters
+            Dictionary of optimized parameters and their performance metrics
         """
         # Simple optimization example - test a few parameter combinations
         best_sharpe = -np.inf
@@ -227,14 +291,26 @@ class MeanReversionStrategy:
         signals: pd.DataFrame = None
     ) -> Dict[str, float]:
         """
-        Update strategy performance metrics.
+        Update strategy performance metrics based on historical or current data.
+        
+        Calculates a comprehensive set of performance metrics to evaluate the strategy's
+        effectiveness and risk characteristics. These metrics can be used for strategy
+        comparison, monitoring, and reporting.
+        
+        Performance metrics include:
+        - Total return: Cumulative return over the entire period
+        - Annualized return: Return normalized to a yearly basis
+        - Volatility: Standard deviation of returns (annualized)
+        - Sharpe ratio: Risk-adjusted return measure
+        - Maximum drawdown: Largest peak-to-trough decline
+        - Win rate: Percentage of positive return periods
         
         Args:
             prices: DataFrame of asset prices
             signals: Signals used (if None, generates new signals)
             
         Returns:
-            Dict of performance metrics
+            Dictionary of performance metrics with standardized keys
         """
         if signals is None:
             signals = self.generate_signals(prices)
@@ -279,11 +355,22 @@ class MeanReversionStrategy:
         """
         Get compatibility score for this strategy in the given market regime.
         
+        Mean reversion strategies perform differently across various market conditions.
+        This method provides a quantitative measure of how well the strategy is expected
+        to perform in each market regime.
+        
+        The compatibility scores reflect empirical evidence that mean reversion strategies:
+        - Perform best in range-bound, sideways markets
+        - Struggle in strong trending markets (bull or bear)
+        - Can adapt to different volatility environments with filtering
+        - May perform well during high volatility periods if properly calibrated
+        - Typically underperform during major paradigm shifts or market crises
+        
         Args:
-            regime: Market regime
+            regime: Market regime classification string
             
         Returns:
-            Compatibility score (0-2, higher is better)
+            Compatibility score (0-2, higher indicates better compatibility)
         """
         # Regime compatibility scores
         compatibility = {
@@ -300,28 +387,34 @@ class MeanReversionStrategy:
     
     def get_current_signals(self) -> Dict[str, int]:
         """
-        Get the most recent signals.
+        Get the most recent trading signals for all assets.
         
         Returns:
-            Dict of assets and their signals
+            Dictionary mapping asset symbols to their current signal values
+            (1=buy, -1=sell, 0=neutral)
         """
         return self.signals
     
     def get_performance(self) -> Dict[str, float]:
         """
-        Get current performance metrics.
+        Get current performance metrics for the strategy.
         
         Returns:
-            Dict of performance metrics
+            Dictionary of performance metrics including returns, volatility,
+            Sharpe ratio, and maximum drawdown
         """
         return self.performance
     
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert strategy to dict representation.
+        Convert strategy to a dictionary representation for serialization.
+        
+        Creates a complete representation of the strategy including all parameters,
+        current signals, and performance metrics, suitable for storage, 
+        transmission, or reconstruction.
         
         Returns:
-            Dict representation of strategy
+            Dictionary representation of the strategy with all relevant attributes
         """
         return {
             "name": self.name,

@@ -3,9 +3,21 @@
 """
 Breakout Trading Strategy Module
 
-This module implements a strategy to exploit volatility expansions when price breaks key
-structural levels or consolidation boundaries, entering early on confirmed breakouts and
-riding directional thrusts.
+This module implements a breakout trading strategy that capitalizes on price movements
+beyond established support and resistance levels or consolidation zones.
+
+Breakout trading is based on the principle that when price breaches a significant level
+with sufficient momentum and volume, it often continues in the direction of the breakout.
+This strategy aims to identify high-probability breakout setups, filter false breakouts,
+and capture the subsequent directional price movement.
+
+Key concepts implemented in this strategy:
+1. Support and resistance level identification using Donchian Channels and Bollinger Bands
+2. Volatility assessment through Bollinger Band Width to detect consolidation zones
+3. Volume confirmation to validate breakout strength and filter false signals 
+4. Context analysis using higher timeframe trend alignment
+5. Dynamic position sizing and risk management based on ATR
+6. Multiple exit strategies including profit targets, trailing stops, and time-based exits
 """
 
 import logging
@@ -28,11 +40,31 @@ logger = logging.getLogger(__name__)
 
 class BreakoutTradingStrategy(StrategyOptimizable):
     """
-    Breakout Trading Strategy designed to exploit volatility expansions.
+    Breakout Trading Strategy
     
-    This strategy identifies and trades price breakouts from key structural levels
-    or consolidation boundaries, using volume and volatility confirmation to filter
-    out false breaks and ride directional thrusts.
+    This strategy identifies and capitalizes on price movements beyond established 
+    technical levels, entering positions when price breaks out of a consolidation zone
+    with sufficient momentum and volume confirmation.
+    
+    Key characteristics:
+    - Identifies consolidation zones using volatility contraction metrics
+    - Detects breakouts above resistance or below support with multiple confirmation factors
+    - Uses volume and momentum confirmation to filter out false breakouts
+    - Incorporates higher timeframe context analysis for directional bias
+    - Implements dynamic position sizing and risk management techniques
+    - Provides multiple exit strategies with trailing stops and time-based rules
+    
+    Ideal market conditions:
+    - Markets transitioning from low to high volatility phases
+    - Assets forming clear consolidation patterns before expansion
+    - Liquid markets with sufficient volume for clean breakouts
+    - Markets with catalysts capable of generating sustained moves
+    
+    Limitations:
+    - Susceptible to false breakouts in choppy market conditions
+    - May experience slippage during rapid price movements
+    - Requires effective filtering to avoid overtrading consolidation patterns
+    - Performance heavily dependent on timely entry and exit execution
     """
     
     def __init__(
@@ -586,16 +618,28 @@ class BreakoutTradingStrategy(StrategyOptimizable):
         self, equity: float, entry_price: float, stop_price: float, is_intraday: bool
     ) -> float:
         """
-        Calculate position size based on risk parameters.
+        Calculate optimal position size based on account risk parameters.
+        
+        This method implements a risk-based position sizing approach that determines
+        the appropriate trade size based on account equity, risk tolerance, and the
+        specific risk parameters of each trade. It dynamically adapts position sizing
+        based on market volatility (reflected in stop distance) and trade timeframe.
+        
+        Position sizing formula: 
+        Position Size = (Account Equity × Risk Percentage) ÷ (Entry Price - Stop Loss Price)
+        
+        The method applies different risk percentages for intraday versus swing trades,
+        typically using more conservative risk levels for longer-term positions that may
+        experience greater market exposure.
         
         Args:
-            equity: Total equity
-            entry_price: Entry price
-            stop_price: Stop loss price
-            is_intraday: Whether this is an intraday trade
+            equity: Total account equity available
+            entry_price: Planned entry price for the trade
+            stop_price: Calculated stop loss price
+            is_intraday: Whether this is an intraday (True) or swing (False) trade
             
         Returns:
-            Position size
+            Position size in units/shares/contracts appropriate for the risk parameters
         """
         # TODO: compute position size
         # Use different risk percentages for intraday vs swing
@@ -748,14 +792,29 @@ class BreakoutTradingStrategy(StrategyOptimizable):
         context_data: pd.DataFrame
     ) -> Dict[str, Any]:
         """
-        Calculate all indicators needed for breakout trading signals.
+        Calculate all technical indicators needed for breakout signal generation.
+        
+        This method computes a comprehensive set of technical indicators at both the
+        signal timeframe (for precise entry/exit) and context timeframe (for directional bias).
+        These indicators are used to identify consolidation patterns, detect breakouts,
+        and filter false signals.
+        
+        Key indicators calculated:
+        - Donchian Channels: Identify support/resistance levels and breakout thresholds
+        - Bollinger Bands: Measure volatility, detect squeezes, and confirm breakouts
+        - Bollinger Bandwidth: Quantify volatility contraction and expansion cycles
+        - Volume Moving Average: Provide volume context for breakout confirmation
+        - Average True Range (ATR): Calculate volatility-based stops and targets
+        - Average Directional Index (ADX): Measure trend strength after breakouts
+        - Price Range: Track consolidation patterns and detect volatility contraction
+        - Higher Timeframe EMA: Establish directional bias and filter counter-trend signals
         
         Args:
-            signal_data: DataFrame with signal timeframe OHLCV data
-            context_data: DataFrame with context timeframe OHLCV data
+            signal_data: DataFrame with OHLCV data at the signal timeframe
+            context_data: DataFrame with OHLCV data at the higher timeframe
             
         Returns:
-            Dictionary of calculated indicators
+            Dictionary of calculated indicators organized by indicator type
         """
         indicators = {}
         
@@ -814,17 +873,33 @@ class BreakoutTradingStrategy(StrategyOptimizable):
         current_time: Optional[datetime] = None
     ) -> Dict[str, Signal]:
         """
-        Generate breakout trading signals.
+        Generate breakout trading signals based on price action and technical conditions.
+        
+        This method analyzes each symbol's data to identify and validate high-probability
+        breakout opportunities across different timeframes. It applies multiple confirmation
+        factors and filtering criteria to minimize false breakouts and increase signal quality.
+        
+        Signal generation process:
+        1. Checks operational conditions (exposure limits, drawdown limits, session timing)
+        2. Analyzes price action to identify consolidation patterns and breakout levels
+        3. Confirms breakouts with volume, volatility, and trend strength indicators
+        4. Applies higher timeframe context analysis for directional bias confirmation
+        5. Filters signals based on news events, sector exposure, and market conditions
+        6. Calculates appropriate entry prices, stop losses, and profit targets
+        7. Computes position sizes based on risk parameters and market volatility
+        
+        Each generated signal includes comprehensive metadata for position management,
+        including trailing stop parameters, volatility measures, and timing information.
         
         Args:
-            data: Dictionary mapping symbols to DataFrames with OHLCV data for different timeframes
-            equity: Current equity value
-            news_events: Optional Dictionary mapping symbols to lists of news event timestamps
-            symbol_sectors: Optional Dictionary mapping symbols to sector classifications
-            current_time: Optional current timestamp
+            data: Nested dictionary mapping symbols to timeframes to OHLCV DataFrames
+            equity: Current account equity value for position sizing
+            news_events: Optional dictionary mapping symbols to upcoming news event times
+            symbol_sectors: Optional dictionary mapping symbols to sector classifications
+            current_time: Optional current timestamp (defaults to now if not provided)
             
         Returns:
-            Dictionary mapping symbols to Signal objects
+            Dictionary mapping symbols to Signal objects for breakout trade opportunities
         """
         # Set current time if not provided
         if current_time is None:

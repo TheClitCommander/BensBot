@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trend-Following Strategy - Identifies and follows the prevailing trend in the market
-by using moving averages, trend lines, and other technical indicators.
+Trend-Following Strategy Module
+
+This module implements a trend-following trading strategy that identifies and capitalizes
+on persistent directional price movements in financial markets.
+
+The trend-following strategy is based on the empirical observation that financial markets
+often exhibit momentum, where price movements tend to persist in the same direction for
+extended periods. This approach aims to identify these trends early, ride them during their
+duration, and exit when they show signs of reversal.
+
+Key concepts implemented in this strategy:
+1. Moving Average Crossovers to identify trend direction and changes
+2. Trend strength measurement to filter for significant trends
+3. Signal line smoothing to reduce whipsaws and false signals
+4. Volatility filtering via Average True Range (ATR)
+5. Position sizing and risk management based on market conditions
 """
 
 import numpy as np
@@ -15,17 +29,30 @@ logger = logging.getLogger(__name__)
 
 class TrendFollowingStrategy:
     """
-    Trend-Following strategy that identifies and follows the prevailing trend in the market.
+    Trend-Following Trading Strategy
     
-    This strategy uses a combination of moving averages and other technical indicators
-    to determine the direction and strength of the trend, and generate trading signals
-    accordingly.
+    This strategy identifies and capitalizes on persistent directional price movements,
+    entering positions in the direction of established trends and exiting when the trend
+    shows signs of weakening or reversal.
     
-    Features:
-    - Multiple moving average combinations
-    - Trend strength measurement
-    - Volatility-adjusted position sizing
-    - Customizable entry and exit conditions
+    Key characteristics:
+    - Identifies trends using moving average crossovers and trend direction
+    - Measures trend strength to filter out weak or nascent trends
+    - Smooths signals using a signal line to reduce noise and false triggers
+    - Incorporates volatility filters to adapt to changing market conditions
+    - Implements dynamic position sizing and risk management
+    
+    Ideal market conditions:
+    - Strongly trending markets with sustained directional price movements
+    - Markets with clear cyclical patterns or strong fundamental drivers
+    - Lower noise environments where trends can develop clearly
+    - Liquid markets that allow for efficient entry and exit
+    
+    Limitations:
+    - Underperforms in choppy, range-bound, or sideways markets
+    - Can experience significant drawdowns during trend reversals
+    - May suffer from late entries and exits due to signal lag
+    - Susceptible to whipsaws in volatile markets with frequent direction changes
     """
     
     def __init__(
@@ -40,17 +67,17 @@ class TrendFollowingStrategy:
         name: str = "trend_following"
     ):
         """
-        Initialize the trend following strategy.
+        Initialize the trend following strategy with configurable parameters.
         
         Args:
-            short_ma_period: Period for short moving average
-            long_ma_period: Period for long moving average
-            signal_ma_period: Period for signal moving average
-            trend_strength_threshold: Minimum trend strength to generate signals
-            use_atr_filter: Whether to use ATR for filtering
-            atr_period: Period for ATR calculation
-            atr_multiplier: Multiplier for ATR
-            name: Strategy name
+            short_ma_period: Period for short moving average (faster-responding)
+            long_ma_period: Period for long moving average (slower, more stable)
+            signal_ma_period: Period for signal moving average (smoothing filter)
+            trend_strength_threshold: Minimum trend strength to generate signals (as % of price)
+            use_atr_filter: Whether to use ATR for volatility filtering
+            atr_period: Period for ATR calculation (typically 14-21 days)
+            atr_multiplier: Multiplier for ATR (risk sizing factor)
+            name: Strategy name for identification and logging
         """
         self.short_ma_period = short_ma_period
         self.long_ma_period = long_ma_period
@@ -71,11 +98,23 @@ class TrendFollowingStrategy:
         """
         Calculate trend following indicators for the given price data.
         
+        Computes a suite of technical indicators used to identify trends, their strength,
+        and potential entry and exit points. These indicators form the basis for the
+        trend-following signal generation logic.
+        
+        Key indicators calculated:
+        - Short-term Moving Average: Responsive to recent price changes
+        - Long-term Moving Average: Establishes the baseline trend
+        - Trend Direction: Differential between short and long MAs
+        - Trend Strength: Normalized trend direction as percentage of price
+        - Signal Line: Smoothed trend direction to filter out noise
+        - ATR: Volatility measure used for position sizing and filtering
+        
         Args:
             prices: DataFrame of asset prices (index=dates, columns=assets)
             
         Returns:
-            Dict of indicator DataFrames
+            Dictionary of calculated indicators, organized by indicator type
         """
         indicators = {}
         
@@ -113,12 +152,24 @@ class TrendFollowingStrategy:
         """
         Generate trade signals based on trend following indicators.
         
+        Analyzes the calculated indicators to identify high-probability trend-following
+        trade opportunities. Signals are generated when trends are confirmed by multiple
+        factors and filtered based on trend strength and volatility conditions.
+        
+        Signal generation logic:
+        - LONG signals: When short MA crosses above long MA, trend strength exceeds threshold,
+          and trend direction is stronger than the signal line (acceleration)
+        - SHORT signals: When short MA crosses below long MA, trend strength exceeds threshold
+          in the negative direction, and trend direction is below the signal line
+        - Additional filtering based on ATR to avoid trading in extremely low or high
+          volatility conditions
+        
         Args:
             prices: DataFrame of asset prices (index=dates, columns=assets)
-            market_data: Additional market data (optional)
+            market_data: Additional market data for contextual analysis (optional)
             
         Returns:
-            DataFrame of trade signals (1=buy, -1=sell, 0=neutral)
+            DataFrame of trade signals (1=buy, -1=sell, 0=neutral) for each asset at each time point
         """
         # Initialize signals DataFrame
         signals = pd.DataFrame(0, index=prices.index, columns=prices.columns)
@@ -172,12 +223,23 @@ class TrendFollowingStrategy:
         """
         Optimize strategy parameters based on historical performance.
         
+        Conducts a systematic search for the best combination of strategy parameters by
+        testing multiple configurations against historical price data. The optimization
+        evaluates performance using risk-adjusted metrics such as the Sharpe ratio.
+        
+        Optimization process:
+        1. Tests combinations of moving average periods and threshold values
+        2. Generates signals for each parameter set using historical data
+        3. Simulates trading performance for each configuration
+        4. Computes risk-adjusted return metrics (annualized return, volatility, Sharpe ratio)
+        5. Selects the parameter set with the highest Sharpe ratio
+        
         Args:
-            prices: DataFrame of asset prices
-            market_data: Additional market data (optional)
+            prices: DataFrame of asset prices for backtesting
+            market_data: Additional market data for contextual analysis (optional)
             
         Returns:
-            Dict of optimized parameters
+            Dictionary of optimized parameters and their performance metrics
         """
         # Simple optimization example - test a few parameter combinations
         best_sharpe = -np.inf
@@ -239,14 +301,26 @@ class TrendFollowingStrategy:
         signals: pd.DataFrame = None
     ) -> Dict[str, float]:
         """
-        Update strategy performance metrics.
+        Update strategy performance metrics based on historical or current data.
+        
+        Calculates a comprehensive set of performance metrics to evaluate the strategy's
+        effectiveness and risk characteristics. These metrics can be used for strategy
+        comparison, monitoring, and reporting.
+        
+        Performance metrics include:
+        - Total return: Cumulative return over the entire period
+        - Annualized return: Return normalized to a yearly basis
+        - Volatility: Standard deviation of returns (annualized)
+        - Sharpe ratio: Risk-adjusted return measure
+        - Maximum drawdown: Largest peak-to-trough decline
+        - Win rate: Percentage of positive return periods
         
         Args:
             prices: DataFrame of asset prices
             signals: Signals used (if None, generates new signals)
             
         Returns:
-            Dict of performance metrics
+            Dictionary of performance metrics with standardized keys
         """
         if signals is None:
             signals = self.generate_signals(prices)
@@ -291,11 +365,21 @@ class TrendFollowingStrategy:
         """
         Get compatibility score for this strategy in the given market regime.
         
+        Trend-following strategies perform differently across various market conditions.
+        This method provides a quantitative measure of how well the strategy is expected
+        to perform in each market regime.
+        
+        The compatibility scores reflect empirical evidence that trend-following strategies:
+        - Perform best in strong directional markets (bull or bear trends)
+        - Struggle in choppy, sideways, or mean-reverting markets
+        - Can adapt to different volatility environments with appropriate filters
+        - May underperform during rapid regime shifts or market reversals
+        
         Args:
-            regime: Market regime
+            regime: Market regime classification string
             
         Returns:
-            Compatibility score (0-2, higher is better)
+            Compatibility score (0-2, higher indicates better compatibility)
         """
         # Regime compatibility scores
         compatibility = {
@@ -312,28 +396,34 @@ class TrendFollowingStrategy:
     
     def get_current_signals(self) -> Dict[str, int]:
         """
-        Get the most recent signals.
+        Get the most recent trading signals for all assets.
         
         Returns:
-            Dict of assets and their signals
+            Dictionary mapping asset symbols to their current signal values
+            (1=buy, -1=sell, 0=neutral)
         """
         return self.signals
     
     def get_performance(self) -> Dict[str, float]:
         """
-        Get current performance metrics.
+        Get current performance metrics for the strategy.
         
         Returns:
-            Dict of performance metrics
+            Dictionary of performance metrics including returns, volatility,
+            Sharpe ratio, and maximum drawdown
         """
         return self.performance
     
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert strategy to dict representation.
+        Convert strategy to a dictionary representation for serialization.
+        
+        Creates a complete representation of the strategy including all parameters,
+        current signals, and performance metrics, suitable for storage, 
+        transmission, or reconstruction.
         
         Returns:
-            Dict representation of strategy
+            Dictionary representation of the strategy with all relevant attributes
         """
         return {
             "name": self.name,

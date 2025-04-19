@@ -20,7 +20,23 @@ from trading_bot.common.config_utils import setup_directories, load_config, save
 logger = logging.getLogger("RiskManager")
 
 class RiskLevel(Enum):
-    """Risk level enumeration"""
+    """
+    Risk level classification system for portfolio-wide risk assessment.
+    
+    Provides a structured categorization of risk exposure levels from 
+    lowest (LOW) to highest (CRITICAL). Each level represents a specific 
+    threshold of risk parameters that trigger different risk mitigation actions.
+    
+    Risk levels are used throughout the system to:
+    - Determine appropriate position sizing
+    - Trigger risk reduction measures
+    - Adjust trading frequency
+    - Modify stop-loss parameters
+    - Notify system operators of changing risk conditions
+    
+    The system automatically transitions between risk levels based on
+    drawdown metrics, portfolio exposure, and volatility measurements.
+    """
     LOW = 1
     MEDIUM = 2
     HIGH = 3
@@ -28,7 +44,36 @@ class RiskLevel(Enum):
     CRITICAL = 5
 
 class StopLossType(Enum):
-    """Stop-loss type enumeration"""
+    """
+    Classification of stop-loss methodologies for risk management.
+    
+    Defines different approaches to setting and managing stop-loss levels.
+    Each methodology has specific characteristics and is appropriate for
+    different market conditions and trading strategies.
+    
+    FIXED: Simple percentage-based stop from entry price
+      - Consistent risk per trade regardless of volatility
+      - Best for stable, low-volatility markets
+      - Simple to implement and understand
+    
+    VOLATILITY: Dynamic stop based on market volatility (ATR)
+      - Adapts to changing market conditions
+      - Wider stops in volatile conditions
+      - Prevents premature exits during normal market fluctuations
+      - Typically uses Average True Range (ATR) multiples
+    
+    TRAILING: Dynamic stop that follows price in favorable direction
+      - Locks in profits while allowing positions to run
+      - Activates after position reaches profit threshold
+      - Maintains fixed or percentage distance from price highs/lows
+      - Optimal for trend-following strategies
+    
+    TIME_BASED: Exits position after specific time period
+      - Used for mean-reversion or time-decay strategies
+      - Can combine with price-based stops
+      - Helps limit exposure to overnight or weekend risk
+      - Enforces discipline for time-sensitive strategies
+    """
     FIXED = 1         # Fixed percentage
     VOLATILITY = 2    # Volatility-based (e.g., ATR multiple)
     TRAILING = 3      # Trailing stop
@@ -36,16 +81,79 @@ class StopLossType(Enum):
 
 class RiskManager:
     """
-    Advanced risk management system that controls position sizing,
-    implements stop-loss mechanisms, and monitors portfolio risk.
+    Advanced risk management system for systematic trading operations.
+    
+    The RiskManager is a comprehensive risk control system that implements 
+    professional-grade risk management practices across multiple dimensions
+    including position sizing, stop-loss management, drawdown controls, and 
+    exposure limits. It serves as the central risk governance component for
+    the entire trading system.
+    
+    Key capabilities:
+    1. Dynamic position sizing based on account equity and volatility
+    2. Multi-tiered stop-loss management (fixed, volatility-based, trailing)
+    3. Portfolio-level risk monitoring and exposure controls
+    4. Maximum drawdown enforcement at daily and overall levels
+    5. Value-at-Risk (VaR) calculations for position and portfolio risk
+    6. Automated risk reduction recommendations when limits are breached
+    7. Correlation-aware portfolio risk assessment
+    8. Risk level classification and adaptive trading parameters
+    9. Comprehensive trade history and risk metrics tracking
+    10. State persistence for continuous risk management
+    
+    Core risk management principles implemented:
+    - Capital preservation through systematic risk controls
+    - Risk-adjusted position sizing for consistent risk exposure
+    - Adaptive risk parameters based on market conditions
+    - Multiple layers of risk management (position, strategy, portfolio)
+    - Drawdown controls to prevent catastrophic losses
+    - Diversification rules to prevent excess concentration
+    - Automated risk reduction protocols during adverse conditions
+    
+    The RiskManager follows a defense-in-depth philosophy, where multiple
+    risk controls work together to prevent significant losses and ensure
+    the system's ability to continue operating under various market conditions.
     """
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize the risk manager.
+        Initialize the risk management system with configuration parameters.
         
-        Args:
-            config: Configuration dictionary
+        Creates a new RiskManager instance with default or custom risk parameters.
+        Sets up the initial portfolio state, risk thresholds, and tracking mechanisms
+        for ongoing risk assessment and management.
+        
+        Parameters:
+            config (Optional[Dict[str, Any]]): Custom configuration dictionary
+                containing risk parameters. If None, loads from disk or uses defaults.
+                
+        Configuration parameters:
+            - max_drawdown_pct: Maximum allowable overall drawdown (default: 0.15 or 15%)
+            - max_daily_drawdown_pct: Maximum allowable daily drawdown (default: 0.05 or 5%)
+            - default_risk_per_trade: Default risk percentage per trade (default: 0.01 or 1%)
+            - max_risk_per_trade: Maximum allowable risk per trade (default: 0.05 or 5%)
+            - max_portfolio_risk: Maximum portfolio exposure (default: 0.30 or 30%)
+            - stop_loss_type: Default stop-loss methodology (default: "VOLATILITY")
+            - fixed_stop_loss_pct: Percentage for fixed stops (default: 0.02 or 2%)
+            - atr_multiplier: Multiplier for ATR-based stops (default: 3.0)
+            - trailing_stop_activation_pct: Profit threshold to activate trailing stops (default: 0.01 or 1%)
+            - trailing_stop_distance_pct: Distance for trailing stops (default: 0.02 or 2%)
+            - initial_portfolio_value: Starting portfolio value (default: 100,000)
+            - max_positions: Maximum number of concurrent positions (default: 10)
+            - var_confidence_level: Confidence level for VaR calculations (default: 0.95 or 95%)
+            - var_time_horizon: Time horizon in days for VaR (default: 1)
+            
+        Side effects:
+            - Creates paths for configuration and state storage
+            - Initializes portfolio tracking metrics
+            - Sets up position tracking structures
+            - Loads previous state if available
+            
+        Notes:
+            - Configuration settings can significantly impact trading behavior and risk profile
+            - More conservative settings (lower percentages) favor capital preservation
+            - More aggressive settings favor potential returns at higher risk
+            - Parameters should be tuned based on strategy characteristics and risk tolerance
         """
         # Setup paths
         self.paths = setup_directories(
@@ -125,16 +233,47 @@ class RiskManager:
     def calculate_position_size(self, symbol: str, entry_price: float, 
                               stop_loss_price: float, market_data: Dict[str, Any]) -> int:
         """
-        Calculate the appropriate position size based on risk parameters.
+        Calculate optimal position size based on systematic risk management rules.
         
-        Args:
-            symbol: Trading symbol
-            entry_price: Planned entry price
-            stop_loss_price: Initial stop-loss price
-            market_data: Market data dictionary containing price history
+        Determines the appropriate number of shares or contracts to trade based on
+        account size, risk parameters, and the distance to the initial stop-loss.
+        This is a critical risk management function that ensures consistent risk
+        per trade regardless of price or volatility.
+        
+        Parameters:
+            symbol (str): Trading symbol for the instrument
+            entry_price (float): Anticipated entry price for the position
+            stop_loss_price (float): Initial stop-loss price for the position
+            market_data (Dict[str, Any]): Market data dictionary containing price history
+                and volatility information for additional risk calculations
             
         Returns:
-            int: Number of shares/contracts to trade
+            int: Number of shares/contracts to trade, rounded down to ensure
+                risk stays within parameters
+                
+        Position sizing methodology:
+        1. Calculate maximum dollar risk based on portfolio value and risk percentage
+        2. Determine risk per share as the distance between entry and stop-loss
+        3. Calculate position size by dividing dollar risk by risk per share
+        4. Apply position limits based on:
+           - Maximum risk per trade
+           - Maximum portfolio exposure
+           - Maximum number of positions
+           - Current risk level and drawdown state
+                
+        Risk controls applied:
+        - Portfolio percentage risk limits (default_risk_per_trade)
+        - Maximum position size limits (max_risk_per_trade)
+        - Total portfolio exposure limits (max_portfolio_risk)
+        - Position count limits (max_positions)
+        
+        Notes:
+            - Position size is always rounded down to whole shares/contracts
+            - Small risk per share can result in large position sizes; max limits provide safeguards
+            - When stop price equals entry price, returns zero (invalid position)
+            - Risk parameters automatically scale with portfolio value changes
+            - Position sizing is directionally neutral (same logic for long and short)
+            - All limits are strictly enforced; the most restrictive limit applies
         """
         # Calculate risk per trade in dollars
         risk_dollars = self.portfolio_value * self.default_risk_per_trade
@@ -177,16 +316,50 @@ class RiskManager:
     def calculate_stop_loss(self, symbol: str, entry_price: float, 
                           direction: int, market_data: Dict[str, Any]) -> float:
         """
-        Calculate stop-loss price based on the configured stop-loss type.
+        Calculate appropriate stop-loss price using the configured methodology.
         
-        Args:
-            symbol: Trading symbol
-            entry_price: Entry price
-            direction: Trade direction (1 for long, -1 for short)
-            market_data: Market data dictionary containing price history
+        Determines the initial stop-loss price for a position based on the selected
+        stop-loss type and relevant market data. The stop-loss price is a critical
+        component of risk management that defines the maximum acceptable loss
+        for a position.
+        
+        Parameters:
+            symbol (str): Trading symbol for the instrument
+            entry_price (float): Entry price for the position
+            direction (int): Trade direction (1 for long, -1 for short)
+            market_data (Dict[str, Any]): Market data dictionary containing price
+                history and volatility information needed for stop calculations
             
         Returns:
-            float: Stop-loss price
+            float: Calculated stop-loss price
+                
+        Stop-loss methodologies:
+        1. FIXED: Simple percentage-based stop
+           - Uses fixed_stop_loss_pct from configuration
+           - Same percentage for all instruments regardless of volatility
+           - Example: 2% below entry for long positions
+           
+        2. VOLATILITY: ATR-based dynamic stop
+           - Adapts to each instrument's specific volatility
+           - Uses ATR multiplier from configuration
+           - Example: Entry price - (3 × ATR) for long positions
+           
+        3. TRAILING: Initial stop same as volatility method
+           - Initial stop similar to volatility method
+           - Will update as price moves favorably
+           - Requires separate update mechanism via update_trailing_stops()
+           
+        4. TIME_BASED: Defaults to fixed percentage stop
+           - Time component handled separately
+           - Initial price stop same as fixed percentage
+        
+        Notes:
+            - Long positions: stop price is below entry price
+            - Short positions: stop price is above entry price
+            - ATR calculation uses 14-period default
+            - Stop prices must never equal the entry price
+            - Falls back to fixed percentage if insufficient data for ATR
+            - For trailing stops, this sets only the initial stop value
         """
         if self.stop_loss_type == StopLossType.FIXED:
             # Fixed percentage stop-loss
@@ -251,10 +424,45 @@ class RiskManager:
     
     def update_trailing_stops(self, market_data: Dict[str, Dict[str, Any]]):
         """
-        Update trailing stop-losses for all positions.
+        Update trailing stop-loss levels based on current market prices.
         
-        Args:
-            market_data: Dictionary mapping symbols to market data
+        Processes all positions with trailing stops and updates their stop-loss
+        levels when price moves favorably beyond the activation threshold.
+        This method "ratchets" stop-loss levels to lock in profits while
+        allowing positions to continue running in profitable trades.
+        
+        Parameters:
+            market_data (Dict[str, Dict[str, Any]]): Dictionary mapping symbols
+                to market data dictionaries containing current prices
+                
+        Trailing stop mechanics:
+        1. For each position with trailing stop type:
+           - Check if current price has moved beyond activation threshold
+           - If activated, calculate new stop-loss level based on trailing distance
+           - Update stop only if new level is more favorable than current stop
+           - Continue updating as price moves further in favorable direction
+           
+        Activation logic:
+        - Long positions: Trailing stop activates when price rises above entry by
+          trailing_stop_activation_pct percentage
+        - Short positions: Trailing stop activates when price falls below entry by
+          trailing_stop_activation_pct percentage
+          
+        Stop distance calculation:
+        - Long positions: Stop is set at current_price × (1 - trailing_stop_distance_pct)
+        - Short positions: Stop is set at current_price × (1 + trailing_stop_distance_pct)
+        
+        Side effects:
+        - Updates position stop_loss_price values in the positions dictionary
+        - Updates position current_value based on latest prices
+        - Logs stop-loss updates for auditing and monitoring
+        
+        Notes:
+            - Trailing stops move in only one direction (more favorable)
+            - More frequent updates lead to more responsive trailing stops
+            - No changes occur until price reaches activation threshold
+            - Positions retain original stop until activation occurs
+            - Market data must contain 'price' key for each symbol
         """
         for symbol, position in self.positions.items():
             if position.get("stop_loss_type") != StopLossType.TRAILING:
@@ -296,13 +504,42 @@ class RiskManager:
     
     def check_stop_losses(self, market_data: Dict[str, Dict[str, Any]]) -> List[str]:
         """
-        Check if any positions have hit their stop-loss levels.
+        Check all positions against their stop-loss levels and identify triggered stops.
         
-        Args:
-            market_data: Dictionary mapping symbols to market data
-            
+        Evaluates each active position against current market prices to determine
+        if any stop-loss levels have been breached. Triggered stops result in the
+        position being closed and recorded in the trade history.
+        
+        Parameters:
+            market_data (Dict[str, Dict[str, Any]]): Dictionary mapping symbols
+                to market data dictionaries containing current prices
+                
         Returns:
-            List of symbols that hit stop-loss
+            List[str]: List of symbols for which stop-losses were triggered
+            
+        Stop-loss evaluation:
+        - Long positions: Stop triggered when current price <= stop price
+        - Short positions: Stop triggered when current price >= stop price
+        
+        Side effects:
+        - Removes triggered positions from the positions dictionary
+        - Records closed trades in the trades_history list with stop_loss exit reason
+        - Logs stop-loss triggers for monitoring and analysis
+        
+        Trade record details:
+        - All original position information
+        - Exit price (current market price)
+        - Exit time (current timestamp)
+        - PnL (absolute and percentage)
+        - Exit reason ('stop_loss')
+        
+        Notes:
+            - This method does not execute actual orders; it only identifies positions
+              that require exit based on stop-loss criteria
+            - Calling code should use the returned list to execute actual exit orders
+            - Stop-loss checks should be performed frequently during market hours
+            - Market data must contain 'price' key for each symbol
+            - Positions removed here will not be included in future risk calculations
         """
         triggered_symbols = []
         
@@ -344,17 +581,54 @@ class RiskManager:
     def open_position(self, symbol: str, entry_price: float, direction: int, 
                     market_data: Dict[str, Any], reason: str = "signal") -> bool:
         """
-        Open a new position with appropriate risk management.
+        Open a new position with comprehensive risk management controls.
         
-        Args:
-            symbol: Trading symbol
-            entry_price: Entry price
-            direction: Trade direction (1 for long, -1 for short)
-            market_data: Market data dictionary
-            reason: Reason for opening the position
+        Creates a new position with appropriate size and stop-loss levels
+        based on risk parameters and market conditions. This is the primary
+        entry point for creating risk-managed positions.
+        
+        Parameters:
+            symbol (str): Trading symbol for the instrument
+            entry_price (float): Entry price for the position
+            direction (int): Trade direction (1 for long, -1 for short)
+            market_data (Dict[str, Any]): Market data dictionary
+            reason (str): Reason for opening the position (default: "signal")
             
         Returns:
-            bool: True if position was opened successfully
+            bool: True if position was opened successfully, False otherwise
+            
+        Position creation process:
+        1. Verify position doesn't already exist
+        2. Calculate appropriate stop-loss price
+        3. Determine optimal position size based on risk parameters
+        4. Create position record with all necessary information
+        5. Add position to the portfolio tracking system
+        6. Update portfolio risk metrics
+        
+        Position record contents:
+        - symbol: Trading symbol
+        - entry_price: Position entry price
+        - entry_time: ISO format timestamp of entry
+        - direction: Trade direction (1=long, -1=short)
+        - size: Position size in shares/contracts
+        - current_value: Initial position value
+        - stop_loss_price: Initial stop-loss price
+        - stop_loss_type: Stop-loss methodology used
+        - reason: Signal or reason for entry
+        
+        Risk management applied:
+        - Prevents duplicate positions in the same instrument
+        - Applies appropriate stop-loss based on configured methodology
+        - Sizes position based on fixed-percentage risk
+        - Enforces maximum position limits
+        - Updates portfolio risk metrics after position creation
+        
+        Notes:
+            - Returns False if any risk limits prevent position creation
+            - Position size may be reduced to comply with risk limits
+            - Position value is calculated as size × entry_price
+            - Position direction must be 1 (long) or -1 (short)
+            - Updates internal risk metrics after position creation
         """
         # Check if we already have this position
         if symbol in self.positions:
@@ -440,10 +714,51 @@ class RiskManager:
     
     def update_portfolio_value(self, market_data: Dict[str, Dict[str, Any]]):
         """
-        Update portfolio value based on current market prices.
+        Update portfolio valuation and risk metrics based on current market prices.
         
-        Args:
-            market_data: Dictionary mapping symbols to market data
+        Recalculates the total portfolio value and various risk metrics using
+        the latest market prices for all open positions. This critical function
+        enables real-time risk monitoring and drawdown tracking.
+        
+        Parameters:
+            market_data (Dict[str, Dict[str, Any]]): Dictionary mapping symbols
+                to market data dictionaries containing current prices
+                
+        Daily tracking transition:
+        - Resets daily tracking metrics when a new calendar day is detected
+        - Ensures accurate per-day risk tracking and appropriate daily risk controls
+        
+        Portfolio valuation process:
+        1. Check for date transition and reset daily metrics if needed
+        2. Start with base portfolio value minus current position values
+        3. For each position, recalculate current value using latest prices
+        4. Sum all position values to get updated portfolio value
+        5. Update peak value tracking for drawdown calculations
+        6. Calculate current drawdown metrics
+        7. Update risk level classification based on current metrics
+        
+        Risk metrics updated:
+        - Total portfolio value
+        - Peak portfolio value (all-time high watermark)
+        - Daily high watermark
+        - Current drawdown percentage
+        - Daily drawdown percentage
+        - Risk level classification
+        
+        Side effects:
+        - Updates self.portfolio_value with current total value
+        - Updates self.peak_portfolio_value if new all-time high
+        - Updates self.daily_high if new daily high
+        - Updates drawdown calculations and risk levels
+        - Updates position current_value for each position
+        - Logs portfolio value and risk status
+        
+        Notes:
+            - Should be called regularly during market hours
+            - Critical for stop-loss monitoring and risk limit enforcement
+            - Market data must contain 'price' key for each symbol
+            - Missing market data for a position will use previous valuation
+            - Risk level transitions may trigger automated risk-reduction measures
         """
         # Check if date has changed
         current_date = datetime.now().date()
@@ -596,10 +911,40 @@ class RiskManager:
     
     def check_risk_limits(self) -> Tuple[bool, List[str]]:
         """
-        Check if any risk limits are breached.
+        Evaluate current risk metrics against configured risk limits.
+        
+        Determines whether risk reduction actions are needed by checking
+        if any risk limits have been breached. This function serves as
+        a trigger for automated risk management interventions.
         
         Returns:
-            Tuple of (should_reduce_risk, list of reasons)
+            Tuple[bool, List[str]]: 
+                - Boolean indicating if risk reduction is needed
+                - List of specific reasons for risk limit breaches
+                
+        Risk limits checked:
+        1. Maximum total drawdown limit
+        2. Maximum daily drawdown limit
+        3. Maximum portfolio exposure limit
+        4. Critical risk level status
+        
+        Risk breach assessment:
+        - True when any risk threshold is breached
+        - Returns all applicable breach reasons for comprehensive reporting
+        - Provides detailed contextual information about each breach
+        
+        Usage:
+        - Regular risk monitoring during trading hours
+        - Pre-trade checks to prevent excess risk
+        - Automated risk reduction decision making
+        - System monitoring and alerting
+        
+        Notes:
+            - Should be called after portfolio value updates
+            - Multiple risk limits may be breached simultaneously
+            - Empty reasons list indicates all risk parameters are within limits
+            - Critical risk level automatically indicates reduction is needed
+            - Risk breaches should trigger immediate action to reduce exposure
         """
         reasons = []
         
@@ -622,10 +967,44 @@ class RiskManager:
     
     def get_reduction_actions(self) -> List[Dict[str, Any]]:
         """
-        Get recommended actions to reduce risk when limits are breached.
+        Generate recommended risk reduction actions when risk limits are breached.
+        
+        Provides a prioritized list of specific actions to reduce risk exposure
+        when risk limits are exceeded. Actions are tailored to the current risk
+        level and position characteristics.
         
         Returns:
-            List of action dictionaries with 'symbol', 'action', and 'reason' keys
+            List[Dict[str, Any]]: List of risk reduction action dictionaries.
+                Each dictionary contains:
+                - 'symbol': Symbol to take action on
+                - 'action': Action to take ('close_position' or 'tighten_stop')
+                - 'reason': Explanation for the recommended action
+                
+        Risk reduction strategies by risk level:
+        1. CRITICAL: Close all positions immediately
+        2. EXTREME: Close largest positions (top 30% by value)
+        3. HIGH: Close underperforming positions (most underwater, up to 20%)
+        4. MEDIUM: Tighten stops on underwater positions
+        5. LOW: No actions needed
+        
+        Selection criteria:
+        - Position size and value
+        - Current profit/loss status
+        - Position correlation
+        - Position age and holding period
+        
+        Implementation:
+        - Only generates actions when risk limits are breached
+        - Returns empty list if no risk reduction needed
+        - Actions are ordered by priority
+        - Each action includes the specific instrument symbol
+        
+        Notes:
+            - Results are recommendations; must be implemented by calling code
+            - More sophisticated implementations may consider correlations
+            - Position-specific characteristics influence selection
+            - The most severe risk level determines the reduction strategy
+            - Check check_risk_limits() should be called before this method
         """
         should_reduce, reasons = self.check_risk_limits()
         
@@ -714,10 +1093,45 @@ class RiskManager:
     
     def get_risk_metrics(self) -> Dict[str, Any]:
         """
-        Get current risk metrics.
+        Retrieve comprehensive risk metrics for monitoring and reporting.
+        
+        Provides a consolidated view of all current risk measurements and
+        portfolio status information for risk monitoring, reporting, and
+        analysis purposes.
         
         Returns:
-            Dictionary with risk metrics
+            Dict[str, Any]: Dictionary containing all current risk metrics:
+                - portfolio_value: Current total portfolio value
+                - peak_portfolio_value: All-time high portfolio value
+                - current_drawdown_pct: Current drawdown from peak
+                - daily_drawdown_pct: Current drawdown from day's high
+                - total_portfolio_risk: Portfolio exposure as percentage
+                - risk_level: Current risk level classification (string name)
+                - portfolio_var: Portfolio-level Value at Risk
+                - position_var: Dictionary mapping symbols to position VaR
+                - positions_count: Number of open positions
+                - timestamp: ISO format timestamp of the metrics
+                
+        Metrics categories:
+        1. Portfolio valuation metrics
+        2. Drawdown and exposure metrics 
+        3. Risk level and classification
+        4. Value at Risk (VaR) metrics
+        5. Position statistics
+        
+        Usage:
+        - System dashboards and monitoring
+        - Risk reporting and compliance
+        - Performance tracking
+        - Decision support for trading systems
+        - Historical risk analysis
+        
+        Notes:
+            - Timestamp captures exact moment of metric generation
+            - All percentage values are expressed as decimals (0.15 = 15%)
+            - VaR values represent potential loss in currency units
+            - Risk level is provided as a string name for easy reporting
+            - Current values reflect the most recent portfolio update
         """
         return {
             "portfolio_value": self.portfolio_value,

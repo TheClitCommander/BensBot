@@ -33,6 +33,36 @@ class RSIMeanReversionStrategy(StrategyOptimizable):
     This strategy generates buy signals when RSI is oversold and
     sell signals when RSI is overbought, based on the premise that
     extreme RSI values tend to revert back to normal levels.
+    
+    Key features:
+    - Uses RSI to identify overbought and oversold conditions in price movements
+    - Implements optional moving average filter to trade only in the direction of the primary trend
+    - Incorporates volume filters to ensure sufficient market participation
+    - Features ATR-based position sizing and risk management
+    - Includes automated exit logic based on RSI returning to neutral levels
+    - Offers trailing stop loss capability to capture extended price moves
+    
+    Trading logic:
+    - Buy signals: Generated when RSI moves below the oversold threshold and then begins to rise
+      indicating a potential reversal from oversold conditions
+    - Sell signals: Generated when RSI moves above the overbought threshold and then begins to fall
+      indicating a potential reversal from overbought conditions
+    - Trend filter: Optional filter to only take trades in the direction of the longer-term trend
+      as defined by price position relative to a moving average
+    - Exit logic: Positions are closed when RSI crosses a neutral level (typically 50) or
+      when stop loss or take profit levels are reached
+    
+    Ideal market conditions:
+    - Range-bound markets with defined upper and lower boundaries
+    - Assets with cyclical price patterns and mean-reverting behavior
+    - Periods of price oscillation rather than strong directional trends
+    - Markets with sufficient volatility to produce tradable overbought/oversold conditions
+    
+    Limitations:
+    - Underperforms in strongly trending markets where overbought/oversold conditions persist
+    - Can generate false signals during trend changes or high volatility environments
+    - May struggle during periods of structural market changes or regime shifts
+    - Requires careful parameter optimization based on each asset's volatility characteristics
     """
     
     def __init__(
@@ -340,6 +370,39 @@ class BollingerBandMeanReversionStrategy(StrategyOptimizable):
     This strategy generates buy signals when price reaches the lower band
     and sell signals when price reaches the upper band, based on the premise
     that prices tend to return to their mean when they deviate too far.
+    
+    Key features:
+    - Uses Bollinger Bands to identify statistical extremes in price movements
+    - Incorporates band width analysis to detect volatility contractions and expansions
+    - Features band squeeze detection to identify potential breakout opportunities
+    - Implements volume confirmation to validate reversal signals
+    - Includes dynamic risk management with ATR-based stop loss and take profit levels
+    - Offers automatic exit when price crosses the middle band (mean reversion target)
+    
+    Trading logic:
+    - Buy signals: Generated when price touches or penetrates the lower band, indicating
+      a statistically significant deviation below the mean with reversion potential
+    - Sell signals: Generated when price touches or penetrates the upper band, indicating
+      a statistically significant deviation above the mean with reversion potential
+    - Band squeeze filter: Optional filter to identify periods of volatility contraction
+      that often precede strong price movements
+    - Risk management: Uses ATR to size positions and set stop loss levels proportional
+      to current market volatility
+    - Exit strategy: Takes profit when price reverts to the mean (middle band) or
+      when trailing stops are triggered
+    
+    Ideal market conditions:
+    - Range-bound markets with clear price boundaries
+    - Assets that demonstrate statistical mean-reverting properties
+    - Markets with cyclical volatility patterns (periods of contraction followed by expansion)
+    - Liquid markets where price movements are smoother and more statistically predictable
+    
+    Limitations:
+    - Can generate false signals during strong trending markets
+    - Band penetrations may not lead to immediate reversals
+    - Less effective during regime changes or market structure shifts
+    - Performance varies based on band parameter selection (period and standard deviation)
+    - May require different parameters for different volatility environments
     """
     
     def __init__(
@@ -686,6 +749,36 @@ class StatisticalMeanReversionStrategy(StrategyOptimizable):
     This strategy calculates z-scores of prices relative to a moving average
     and generates signals when prices deviate significantly from the mean,
     assuming they will revert back to normal levels.
+    
+    Key features:
+    - Uses statistical z-scores to quantify deviations from the mean
+    - Provides options for different central tendency measures (mean or median)
+    - Supports both simple and exponential moving averages for baseline calculation
+    - Implements configurable entry and exit thresholds based on standard deviations
+    - Incorporates volume filters to validate statistical signals
+    - Features adaptive risk management based on recent volatility measures
+    
+    Trading logic:
+    - Buy signals: Generated when z-score crosses back above a negative threshold
+      (e.g., -2.0), indicating a potential upward reversion after significant downside deviation
+    - Sell signals: Generated when z-score crosses back below a positive threshold
+      (e.g., +2.0), indicating a potential downward reversion after significant upside deviation
+    - Exit logic: Positions are closed when z-score approaches the mean (configurable threshold)
+      or when stop loss/take profit levels are reached
+    - Take profit: Typically set at the mean/median price level, representing complete reversion
+    
+    Ideal market conditions:
+    - Markets with identifiable statistical properties and stable variance
+    - Assets that display predictable mean-reverting behavior
+    - Instruments with sufficient history to calculate meaningful statistical measures
+    - Environments with stable correlation structures and market regimes
+    
+    Limitations:
+    - Relies on the assumption of price normality which may not always hold
+    - Sensitive to outliers and regime changes that affect statistical properties
+    - May generate signals too early during sustained trending movements
+    - Requires careful selection of lookback periods to balance sensitivity and reliability
+    - Statistical parameters need periodic recalibration as market conditions evolve
     """
     
     def __init__(

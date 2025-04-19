@@ -19,7 +19,7 @@ from trading_bot.core.service_registry import ServiceRegistry
 from trading_bot.core.interfaces import DataProvider, Strategy, RiskManager, OrderManager
 from trading_bot.utils.config_parser import load_config_file, validate_calendar_spread_config
 from trading_bot.data.data_manager import DataManager
-from trading_bot.strategies.calendar_spread import CalendarSpreadStrategy
+from trading_bot.strategies.options.spreads.calendar_spread import CalendarSpread as CalendarSpreadStrategy
 from trading_bot.strategies.stocks.swing import StockSwingTradingStrategy
 
 logger = logging.getLogger(__name__)

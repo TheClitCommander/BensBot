@@ -13,7 +13,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Union, Any
 
-from trading_bot.strategies.base_strategy import BaseOptionsStrategy
+from trading_bot.strategies.strategy_template import StrategyOptimizable as BaseOptionsStrategy
 from trading_bot.utils.strangle_utils import (
     calculate_strangle_cost, calculate_strangle_breakeven_points,
     calculate_strangle_pnl, find_strangle_strikes, find_strangle_by_otm_pct,
@@ -561,13 +561,49 @@ class StrangleStrategy(BaseOptionsStrategy):
     
     def run(self, symbols: List[str] = None) -> Dict:
         """
-        Run the strangle strategy, scanning for opportunities and managing positions.
+        Run the strangle strategy, identifying and executing trading opportunities.
+        
+        This method serves as the main entry point for the strangle strategy workflow,
+        orchestrating the complete trading cycle from opportunity scanning to position
+        management. It implements a systematic approach to strangle trading based on
+        volatility conditions, option pricing, and risk management parameters.
+        
+        The execution process follows these key steps:
+        1. Position management: Evaluate existing positions against exit criteria
+           - Profit targets reached
+           - Stop losses triggered
+           - Time decay thresholds crossed
+           - Volatility environment changes
+        
+        2. Opportunity scanning: Identify potential new strangle setups
+           - Screen for elevated IV rank and volatility conditions
+           - Look for upcoming catalysts and event-driven opportunities
+           - Evaluate option chains for strike selection and pricing
+           - Score opportunities using a multi-factor model
+        
+        3. Portfolio allocation: Make entry decisions based on available capacity
+           - Respect maximum position count limits
+           - Prioritize opportunities by score
+           - Filter symbols with existing positions
+           - Execute entry orders for selected opportunities
+        
+        This systematic approach ensures disciplined strategy execution while
+        adapting to current market conditions and maintaining appropriate
+        portfolio-level risk management.
         
         Args:
-            symbols: Optional list of symbols to scan, otherwise uses watchlist
+            symbols: Optional list of symbols to scan (uses configured watchlist if None)
             
         Returns:
-            Strategy run results
+            Dictionary containing execution results:
+            - timestamp: Execution timestamp
+            - strategy: Strategy name
+            - positions_managed: Number of positions checked
+            - exits_executed: Number of positions exited
+            - opportunities_found: Number of new opportunities identified
+            - entries_executed: Number of new positions entered
+            - errors: Number of errors encountered
+            - open_positions: Current number of open positions
         """
         self.logger.info("Running strangle strategy")
         
@@ -625,10 +661,35 @@ class StrangleStrategy(BaseOptionsStrategy):
     
     def get_strategy_stats(self) -> Dict:
         """
-        Calculate strategy performance statistics.
+        Calculate comprehensive performance statistics for the strangle strategy.
+        
+        This method analyzes the historical trade data to generate a detailed
+        performance report for the strangle strategy. It provides critical metrics
+        for evaluating strategy effectiveness, profitability patterns, and potential
+        areas for optimization.
+        
+        Performance metrics calculated include:
+        1. General performance: Total trades, win rate, average P&L
+        2. Risk metrics: Maximum gain and loss, reward-to-risk ratio
+        3. Efficiency metrics: Average holding period, capital utilization
+        4. Exit analysis: Performance breakdown by exit reason
+        5. Market regime analysis: Performance across different market environments
+        
+        These statistics are valuable for:
+        - Evaluating the strategy's overall effectiveness
+        - Identifying which exit conditions are most profitable
+        - Understanding optimal holding periods
+        - Recognizing how the strategy performs in different market conditions
+        - Providing data for ongoing strategy refinement and optimization
         
         Returns:
-            Dictionary of strategy statistics
+            Dict containing comprehensive strategy performance metrics:
+            - Trade frequency metrics (total trades)
+            - Profitability metrics (win rate, avg P&L)
+            - Risk metrics (max gain/loss)
+            - Efficiency metrics (holding period)
+            - Exit analysis (performance by exit reason)
+            - Current portfolio status (open positions)
         """
         if not hasattr(self, 'trade_history') or not self.trade_history:
             return {

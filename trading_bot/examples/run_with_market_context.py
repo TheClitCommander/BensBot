@@ -24,9 +24,9 @@ if project_root not in sys.path:
 # Import our components
 from trading_bot.market.market_context_fetcher import MarketContextFetcher, MarketRegime
 from trading_bot.strategies.integrated_strategy_rotator import IntegratedStrategyRotator
-from trading_bot.strategies.momentum_strategy import MomentumStrategy
-from trading_bot.strategies.trend_following_strategy import TrendFollowingStrategy
-from trading_bot.strategies.mean_reversion_strategy import MeanReversionStrategy
+from trading_bot.strategies.stocks.momentum import MomentumStrategy
+from trading_bot.strategies.stocks.trend_following import TrendFollowingStrategy
+from trading_bot.strategies.stocks.mean_reversion import MeanReversionStrategy
 
 # If you have a backtesting module, import it as well
 # from trading_bot.backtesting.order_book_simulator import OrderBookSimulator

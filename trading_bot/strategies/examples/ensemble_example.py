@@ -10,7 +10,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from trading_bot.strategies.strategy_ensemble import StrategyEnsemble, WeightingMethod, DynamicEnsemble
-from trading_bot.strategies.base_strategy import Strategy
+from trading_bot.strategies.strategy_template import StrategyTemplate as Strategy
 from trading_bot.strategies.macro_trend_strategy import MacroTrendStrategy
 from trading_bot.strategies.regime_aware_strategy import RegimeAwareStrategy, MarketRegime, RegimeDetector
 from trading_bot.backtesting.performance_metrics import calculate_comprehensive_metrics

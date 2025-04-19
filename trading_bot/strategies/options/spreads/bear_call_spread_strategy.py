@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bear Put Spread Strategy Module
+Bear Call Spread Strategy Module
 
-This module implements a bear put spread options strategy that profits from 
+This module implements a bear call spread options strategy that profits from 
 moderate bearish price movements with defined risk and reward.
 """
 
@@ -26,30 +26,30 @@ from trading_bot.signals.technical_signals import TechnicalSignals
 
 logger = logging.getLogger(__name__)
 
-class BearPutSpreadStrategy(StrategyOptimizable):
+class BearCallSpreadStrategy(StrategyOptimizable):
     """
-    Bear Put Spread Strategy
+    Bear Call Spread Strategy
     
-    This strategy involves buying a put option at a higher strike price and selling a put option
-    at a lower strike price with the same expiration date. This creates a debit spread that
-    profits from moderately bearish movements while capping both the maximum profit and loss.
+    This strategy involves selling a call option at a lower strike price and buying a call option
+    at a higher strike price with the same expiration date. This creates a credit spread that
+    profits from neutral to bearish price movements with defined risk and reward.
     
     Key characteristics:
-    - Limited risk (max loss = net premium paid)
-    - Limited profit (max profit = difference between strikes - net premium paid)
-    - Requires less capital than buying puts outright
-    - Benefits from moderately bearish price movement
-    - Mitigates time decay impact compared to single puts
+    - Limited risk (max loss = difference between strikes - net premium received)
+    - Limited profit (max profit = net premium received)
+    - Benefits from time decay and/or bearish price movement
+    - Requires less margin than selling naked calls
+    - Defined risk-reward ratio
     """
     
     # ======================== 1. STRATEGY PHILOSOPHY ========================
-    # Profit from moderate bearish moves by buying a higher-strike put and selling a lower-strike put,
-    # defining your risk while capturing downside leverage at a fraction of the cost of a naked put.
+    # Collect premium by selling a call option at a lower strike while buying a higher-strike call to 
+    # define risk, profiting from neutral-to-bearish moves while avoiding unlimited risk of naked calls.
     
     # ======================== 2. DEFAULT PARAMETERS ========================
     DEFAULT_PARAMS = {
         # Strategy identification
-        'strategy_name': 'bear_put_spread',
+        'strategy_name': 'bear_call_spread',
         'strategy_version': '1.0.0',
         
         # Universe selection criteria (Liquid large-caps or ETFs)
@@ -71,15 +71,19 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         'momentum_threshold': -0.03,          # Price decline threshold (-0.03 = -3%)
         
         # Option parameters
-        'target_dte': 35,                     # Target days to expiration (~30 DTE)
+        'target_dte': 35,                     # Target days to expiration (~30-40 DTE)
         'min_dte': 25,                        # Minimum days to expiration
         'max_dte': 45,                        # Maximum days to expiration
         'spread_width_pct': 0.04,             # Width between strikes as % of stock price (~3-5%)
         'strike_selection_method': 'delta',   # 'delta' or 'otm_percentage'
-        'long_put_delta': 0.45,               # Target delta for long put (0.35-0.50)
-        'short_put_delta': 0.20,              # Target delta for short put (0.15-0.25)
-        'long_otm_percentage': 0.00,          # Alternative: % OTM for long put (0 = ATM)
-        'short_otm_extra': 0.04,              # Extra % OTM for short put
+        'short_call_delta': 0.35,             # Target delta for short call (0.30-0.40)
+        'long_call_delta': 0.15,              # Target delta for long call (0.10-0.20)
+        'short_otm_percentage': 0.00,         # Alternative: % OTM for short call (0 = ATM)
+        'long_otm_extra': 0.04,               # Extra % OTM for long call
+        
+        # Entry and credit parameters
+        'min_credit': 0.25,                   # Minimum credit to collect (per spread)
+        'target_credit_percent': 0.15,        # Target credit as % of spread width (15%)
         
         # Risk management parameters
         'max_position_size_percent': 0.02,    # Maximum position size as % of portfolio (1-2%)
@@ -88,7 +92,7 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         
         # Exit parameters
         'profit_target_percent': 60,          # Exit at this percentage of max profit (50-75%)
-        'loss_limit_percent': 20,             # Exit if loss exceeds threshold (width × 0.2)
+        'loss_limit_percent': 150,            # Exit if loss exceeds threshold (% of credit)
         'dte_exit_threshold': 10,             # Exit when DTE reaches this value (7-10 days)
         'use_trailing_stop': False,           # Whether to use trailing stop
         'trailing_stop_activation': 0.3,      # Activate trailing stop after % of max profit
@@ -148,7 +152,7 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         for symbol in symbols_to_remove:
             universe.remove_symbol(symbol)
             
-        logger.info(f"Bear Put Spread universe contains {len(universe.get_symbols())} symbols")
+        logger.info(f"Bear Call Spread universe contains {len(universe.get_symbols())} symbols")
         return universe
     
     # ======================== 4. SELECTION CRITERIA ========================
@@ -219,14 +223,14 @@ class BearPutSpreadStrategy(StrategyOptimizable):
             logger.debug(f"{symbol} does not have recent bearish momentum")
             return False
             
-        logger.info(f"{symbol} meets all selection criteria for bear put spread")
+        logger.info(f"{symbol} meets all selection criteria for bear call spread")
         return True
     
     # ======================== 5. OPTION SELECTION ========================
     def select_option_contract(self, symbol: str, market_data: MarketData,
                               option_chains: OptionChains) -> Dict[str, Any]:
         """
-        Select the appropriate option contracts for the bear put spread.
+        Select the appropriate option contracts for the bear call spread.
         
         Parameters:
             symbol: The stock symbol
@@ -248,46 +252,55 @@ class BearPutSpreadStrategy(StrategyOptimizable):
             logger.error(f"No suitable expiration found for {symbol}")
             return {}
             
-        # Get put options for the selected expiration
-        put_options = option_chains.get_puts(symbol, target_expiration)
-        if put_options.empty:
-            logger.error(f"No put options available for {symbol} at {target_expiration}")
+        # Get call options for the selected expiration
+        call_options = option_chains.get_calls(symbol, target_expiration)
+        if call_options.empty:
+            logger.error(f"No call options available for {symbol} at {target_expiration}")
             return {}
             
         # Select strikes based on the configured method
         if self.params['strike_selection_method'] == 'delta':
-            long_put, short_put = self._select_strikes_by_delta(put_options, current_price)
+            short_call, long_call = self._select_strikes_by_delta(call_options, current_price)
         else:  # Default to otm_percentage
-            long_put, short_put = self._select_strikes_by_otm_percentage(put_options, current_price)
+            short_call, long_call = self._select_strikes_by_otm_percentage(call_options, current_price)
             
-        if not long_put or not short_put:
+        if not short_call or not long_call:
             logger.error(f"Could not select appropriate strikes for {symbol}")
             return {}
             
-        # Calculate the debit and max profit potential
-        debit = long_put['ask'] - short_put['bid']
-        max_profit = (long_put['strike'] - short_put['strike']) - debit
-        max_loss = debit
+        # Calculate the credit and max profit/loss
+        credit = short_call['bid'] - long_call['ask']
+        max_profit = credit
+        max_loss = (long_call['strike'] - short_call['strike']) - credit
         
-        if debit <= 0:
-            logger.warning(f"Invalid debit spread for {symbol}, debit: {debit}")
+        # Check if the credit meets minimum requirements
+        if credit < self.params['min_credit']:
+            logger.debug(f"Credit of {credit:.2f} for {symbol} is below minimum {self.params['min_credit']}")
+            return {}
+            
+        # Check if credit as percentage of width is within target range
+        width = long_call['strike'] - short_call['strike']
+        credit_percent = credit / width
+        
+        if credit_percent < self.params['target_credit_percent']:
+            logger.debug(f"Credit percentage {credit_percent:.2f}% for {symbol} is below target")
             return {}
             
         # Return the selected options and trade details
         return {
             'symbol': symbol,
-            'strategy': 'bear_put_spread',
+            'strategy': 'bear_call_spread',
             'expiration': target_expiration,
             'dte': (datetime.strptime(target_expiration, '%Y-%m-%d').date() - date.today()).days,
-            'long_put': long_put,
-            'short_put': short_put,
-            'long_put_contract': f"{symbol}_{target_expiration}_{long_put['strike']}_P",
-            'short_put_contract': f"{symbol}_{target_expiration}_{short_put['strike']}_P",
-            'debit': debit,
+            'short_call': short_call,
+            'long_call': long_call,
+            'short_call_contract': f"{symbol}_{target_expiration}_{short_call['strike']}_C",
+            'long_call_contract': f"{symbol}_{target_expiration}_{long_call['strike']}_C",
+            'credit': credit,
             'max_profit': max_profit,
             'max_loss': max_loss,
-            'breakeven': long_put['strike'] - debit,
-            'risk_reward_ratio': max_profit / max_loss if max_loss > 0 else 0,
+            'breakeven': short_call['strike'] + credit,
+            'risk_reward_ratio': max_loss / max_profit if max_profit > 0 else 0,
             'price': current_price,
             'timestamp': datetime.now().isoformat()
         }
@@ -306,7 +319,7 @@ class BearPutSpreadStrategy(StrategyOptimizable):
             int: Number of spreads to trade
         """
         # Calculate max risk per spread
-        max_risk_per_spread = trade_details['max_loss'] * 100  # Convert to dollars (per contract)
+        max_loss_per_spread = trade_details['max_loss'] * 100  # Convert to dollars (per contract)
         
         # Get portfolio value
         portfolio_value = position_sizer.get_portfolio_value()
@@ -315,29 +328,29 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         max_risk_dollars = portfolio_value * self.params['max_risk_per_trade']
         
         # Calculate number of spreads
-        if max_risk_per_spread <= 0:
+        if max_loss_per_spread <= 0:
             return 0
             
-        num_spreads = int(max_risk_dollars / max_risk_per_spread)
+        num_spreads = int(max_risk_dollars / max_loss_per_spread)
         
         # Check against max position size
         max_position_dollars = portfolio_value * self.params['max_position_size_percent']
-        position_cost = trade_details['debit'] * 100 * num_spreads
+        position_risk = max_loss_per_spread * num_spreads
         
-        if position_cost > max_position_dollars:
-            num_spreads = int(max_position_dollars / (trade_details['debit'] * 100))
+        if position_risk > max_position_dollars:
+            num_spreads = int(max_position_dollars / max_loss_per_spread)
             
         # Ensure at least 1 spread if we're trading
         num_spreads = max(1, num_spreads)
         
-        logger.info(f"Bear Put Spread position size for {trade_details['symbol']}: {num_spreads} spreads")
+        logger.info(f"Bear Call Spread position size for {trade_details['symbol']}: {num_spreads} spreads")
         return num_spreads
     
     # ======================== 7. ENTRY EXECUTION ========================
     def prepare_entry_orders(self, trade_details: Dict[str, Any], 
                             num_spreads: int) -> List[Order]:
         """
-        Prepare orders for executing the bear put spread.
+        Prepare orders for executing the bear call spread.
         
         Parameters:
             trade_details: Details of the selected spread
@@ -352,49 +365,45 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         symbol = trade_details['symbol']
         orders = []
         
-        # Create combo order for broker platforms that support it
-        # For practical implementation, you might need a specific combo order type
-        # Here we're creating individual leg orders which would be executed separately
-        
-        # Create long put order
-        long_put_order = Order(
+        # Create short call order (sell to open)
+        short_call_order = Order(
             symbol=symbol,
-            option_symbol=trade_details['long_put_contract'],
-            order_type=OrderType.LIMIT,
-            action=OrderAction.BUY,
-            quantity=num_spreads,
-            limit_price=trade_details['long_put']['ask'],
-            trade_id=f"bear_put_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            order_details={
-                'strategy': 'bear_put_spread',
-                'leg': 'long_put',
-                'expiration': trade_details['expiration'],
-                'strike': trade_details['long_put']['strike'],
-                'trade_details': trade_details
-            }
-        )
-        orders.append(long_put_order)
-        
-        # Create short put order
-        short_put_order = Order(
-            symbol=symbol,
-            option_symbol=trade_details['short_put_contract'],
+            option_symbol=trade_details['short_call_contract'],
             order_type=OrderType.LIMIT,
             action=OrderAction.SELL,
             quantity=num_spreads,
-            limit_price=trade_details['short_put']['bid'],
-            trade_id=f"bear_put_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            limit_price=trade_details['short_call']['bid'],
+            trade_id=f"bear_call_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             order_details={
-                'strategy': 'bear_put_spread',
-                'leg': 'short_put',
+                'strategy': 'bear_call_spread',
+                'leg': 'short_call',
                 'expiration': trade_details['expiration'],
-                'strike': trade_details['short_put']['strike'],
+                'strike': trade_details['short_call']['strike'],
                 'trade_details': trade_details
             }
         )
-        orders.append(short_put_order)
+        orders.append(short_call_order)
         
-        logger.info(f"Created bear put spread orders for {symbol}: {num_spreads} spreads")
+        # Create long call order (buy to open)
+        long_call_order = Order(
+            symbol=symbol,
+            option_symbol=trade_details['long_call_contract'],
+            order_type=OrderType.LIMIT,
+            action=OrderAction.BUY,
+            quantity=num_spreads,
+            limit_price=trade_details['long_call']['ask'],
+            trade_id=f"bear_call_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            order_details={
+                'strategy': 'bear_call_spread',
+                'leg': 'long_call',
+                'expiration': trade_details['expiration'],
+                'strike': trade_details['long_call']['strike'],
+                'trade_details': trade_details
+            }
+        )
+        orders.append(long_call_order)
+        
+        logger.info(f"Created bear call spread orders for {symbol}: {num_spreads} spreads")
         return orders
     
     # ======================== 8. EXIT CONDITIONS ========================
@@ -423,7 +432,7 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         # Check if DTE is below threshold
         current_dte = trade_details.get('dte', 0)
         if current_dte <= self.params['dte_exit_threshold']:
-            logger.info(f"Exiting {symbol} bear put spread: DTE {current_dte} <= threshold {self.params['dte_exit_threshold']}")
+            logger.info(f"Exiting {symbol} bear call spread: DTE {current_dte} <= threshold {self.params['dte_exit_threshold']}")
             return True
             
         # Check for profit target
@@ -431,56 +440,50 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         entry_value = position.get('entry_value', 0)
         
         if entry_value > 0:
-            # Calculate profit as percentage of max potential profit
-            max_profit = trade_details.get('max_profit', 0) * 100  # Convert to dollars
-            realized_profit = current_value - entry_value
+            # For a credit spread, entry_value is negative (credit received)
+            # and current_value is the cost to close (debit paid)
+            max_credit = trade_details.get('credit', 0) * 100  # Convert to dollars
+            profit = max_credit - current_value
             
-            if max_profit > 0:
-                profit_pct = (realized_profit / max_profit) * 100
+            if max_credit > 0:
+                profit_pct = (profit / max_credit) * 100
                 
                 # If we've reached our target profit percentage
                 if profit_pct >= self.params['profit_target_percent']:
-                    logger.info(f"Exiting {symbol} bear put spread: Profit target reached {profit_pct:.2f}%")
+                    logger.info(f"Exiting {symbol} bear call spread: Profit target reached {profit_pct:.2f}%")
                     return True
                 
             # Check for loss limit
-            # The threshold is based on a percentage of the width between strikes
-            max_loss = trade_details.get('max_loss', 0) * 100  # Convert to dollars
-            loss = entry_value - current_value
-            
-            if loss > 0 and max_loss > 0:
-                loss_pct = (loss / max_loss) * 100
+            loss = current_value - max_credit
+            if loss > 0:
+                loss_pct = (loss / max_credit) * 100
                 
                 if loss_pct >= self.params['loss_limit_percent']:
-                    logger.info(f"Exiting {symbol} bear put spread: Loss limit reached {loss_pct:.2f}%")
+                    logger.info(f"Exiting {symbol} bear call spread: Loss limit reached {loss_pct:.2f}%")
                     return True
                     
         # Check if the underlying price has moved significantly against our position
         current_price = market_data.get_latest_price(symbol)
         if current_price:
-            long_put_strike = trade_details.get('long_put', {}).get('strike', 0)
-            short_put_strike = trade_details.get('short_put', {}).get('strike', 0)
+            short_call_strike = trade_details.get('short_call', {}).get('strike', 0)
             
-            # If price moves substantially above our long put strike, consider exiting
-            if current_price > long_put_strike * 1.05:  # 5% above long put strike
-                logger.info(f"Exiting {symbol} bear put spread: Price moved against position")
+            # If price moves substantially above short strike, consider exiting
+            if current_price > short_call_strike * 1.02:  # 2% above short strike
+                logger.info(f"Exiting {symbol} bear call spread: Price moved against position")
                 return True
                 
         # Implement trailing stop if enabled
-        if self.params['use_trailing_stop'] and entry_value > 0 and max_profit > 0:
+        if self.params['use_trailing_stop'] and entry_value > 0 and 'highest_profit' in position:
             # Only activate trailing stop after reaching activation threshold
-            activation_threshold = max_profit * (self.params['trailing_stop_activation'] / 100)
+            activation_threshold = max_credit * (self.params['trailing_stop_activation'] / 100)
             
-            if realized_profit >= activation_threshold:
+            if profit >= activation_threshold:
                 # Calculate trailing stop level
-                trailing_stop = realized_profit * (1 - self.params['trailing_stop_distance'])
-                
-                # Store the highest realized profit to implement trailing
-                position['highest_profit'] = max(position.get('highest_profit', 0), realized_profit)
+                trailing_stop = profit * (1 - self.params['trailing_stop_distance'])
                 
                 # If current profit drops below trailing stop level, exit
-                if position['highest_profit'] - realized_profit > trailing_stop:
-                    logger.info(f"Exiting {symbol} bear put spread: Trailing stop triggered")
+                if position['highest_profit'] - profit > trailing_stop:
+                    logger.info(f"Exiting {symbol} bear call spread: Trailing stop triggered")
                     return True
                 
         return False
@@ -509,7 +512,7 @@ class BearPutSpreadStrategy(StrategyOptimizable):
                 continue
                 
             # Determine action to close the position
-            close_action = OrderAction.SELL if leg.get('action') == OrderAction.BUY else OrderAction.BUY
+            close_action = OrderAction.BUY if leg.get('action') == OrderAction.SELL else OrderAction.SELL
             
             close_order = Order(
                 symbol=leg.get('symbol', ''),
@@ -519,7 +522,7 @@ class BearPutSpreadStrategy(StrategyOptimizable):
                 quantity=leg.get('quantity', 0),
                 trade_id=f"close_{leg.get('trade_id', '')}",
                 order_details={
-                    'strategy': 'bear_put_spread',
+                    'strategy': 'bear_call_spread',
                     'leg': 'exit_' + leg.get('order_details', {}).get('leg', ''),
                     'closing_order': True,
                     'original_order_id': leg.get('order_id', '')
@@ -527,10 +530,10 @@ class BearPutSpreadStrategy(StrategyOptimizable):
             )
             orders.append(close_order)
             
-        logger.info(f"Created exit orders for bear put spread position")
+        logger.info(f"Created exit orders for bear call spread position")
         return orders
     
-    # ======================== 10. CONTINUOUS OPTIMIZATION ========================
+    # ======================== 10. ROLL EXECUTION ========================
     def prepare_roll_orders(self, position: Dict[str, Any], 
                            market_data: MarketData,
                            option_chains: OptionChains) -> List[Order]:
@@ -569,46 +572,37 @@ class BearPutSpreadStrategy(StrategyOptimizable):
         # Create exit orders for current position
         exit_orders = self.prepare_exit_orders(position)
         
-        # Create entry orders for new position with the new expiration
-        # This is simplified - in practice you would want to ensure the new position
-        # has similar strikes and characteristics
-        
         # Get current price
         current_price = market_data.get_latest_price(symbol)
         if current_price is None:
             return exit_orders  # Only exit the current position
             
-        # Get put options for the new expiration
-        put_options = option_chains.get_puts(symbol, new_expiration)
-        if put_options.empty:
+        # Get call options for the new expiration
+        call_options = option_chains.get_calls(symbol, new_expiration)
+        if call_options.empty:
             return exit_orders  # Only exit the current position
             
         # Select strikes similar to current position
-        long_put_strike = trade_details.get('long_put', {}).get('strike', 0)
-        short_put_strike = trade_details.get('short_put', {}).get('strike', 0)
+        short_call_strike = trade_details.get('short_call', {}).get('strike', 0)
+        long_call_strike = trade_details.get('long_call', {}).get('strike', 0)
         
         # Find closest strikes in the new expiration
         try:
-            # For long put
-            new_long_put = put_options.iloc[
-                (put_options['strike'] - long_put_strike).abs().argsort()[:1]
+            # For short call
+            new_short_call = call_options.iloc[
+                (call_options['strike'] - short_call_strike).abs().argsort()[:1]
             ].to_dict('records')[0]
             
-            # For short put
-            new_short_put = put_options.iloc[
-                (put_options['strike'] - short_put_strike).abs().argsort()[:1]
+            # For long call
+            new_long_call = call_options.iloc[
+                (call_options['strike'] - long_call_strike).abs().argsort()[:1]
             ].to_dict('records')[0]
             
-            # Calculate the net credit/debit for the roll
-            close_cost = sum([
-                order.limit_price if order.action == OrderAction.BUY else -order.limit_price 
-                for order in exit_orders if order.order_type == OrderType.LIMIT
-            ])
-            
-            new_debit = new_long_put['ask'] - new_short_put['bid']
+            # Calculate the new credit
+            new_credit = new_short_call['bid'] - new_long_call['ask']
             
             # Check if roll meets minimum credit requirement
-            if close_cost - new_debit < self.params['roll_min_credit']:
+            if new_credit < self.params['roll_min_credit']:
                 logger.info(f"Roll for {symbol} does not meet minimum credit requirement")
                 return exit_orders  # Only exit the current position
                 
@@ -618,61 +612,61 @@ class BearPutSpreadStrategy(StrategyOptimizable):
             # Create new trade details for the roll
             new_trade_details = {
                 'symbol': symbol,
-                'strategy': 'bear_put_spread',
+                'strategy': 'bear_call_spread',
                 'expiration': new_expiration,
                 'dte': (datetime.strptime(new_expiration, '%Y-%m-%d').date() - date.today()).days,
-                'long_put': new_long_put,
-                'short_put': new_short_put,
-                'long_put_contract': f"{symbol}_{new_expiration}_{new_long_put['strike']}_P",
-                'short_put_contract': f"{symbol}_{new_expiration}_{new_short_put['strike']}_P",
-                'debit': new_debit,
+                'short_call': new_short_call,
+                'long_call': new_long_call,
+                'short_call_contract': f"{symbol}_{new_expiration}_{new_short_call['strike']}_C",
+                'long_call_contract': f"{symbol}_{new_expiration}_{new_long_call['strike']}_C",
+                'credit': new_credit,
                 'price': current_price,
                 'timestamp': datetime.now().isoformat()
             }
             
             roll_orders = []
             
-            # Create long put order for the new expiration
-            long_put_order = Order(
+            # Create short call order for the new expiration
+            short_call_order = Order(
                 symbol=symbol,
-                option_symbol=new_trade_details['long_put_contract'],
-                order_type=OrderType.LIMIT,
-                action=OrderAction.BUY,
-                quantity=quantity,
-                limit_price=new_long_put['ask'],
-                trade_id=f"roll_bear_put_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                order_details={
-                    'strategy': 'bear_put_spread',
-                    'leg': 'long_put',
-                    'expiration': new_expiration,
-                    'strike': new_long_put['strike'],
-                    'trade_details': new_trade_details,
-                    'roll': True
-                }
-            )
-            roll_orders.append(long_put_order)
-            
-            # Create short put order for the new expiration
-            short_put_order = Order(
-                symbol=symbol,
-                option_symbol=new_trade_details['short_put_contract'],
+                option_symbol=new_trade_details['short_call_contract'],
                 order_type=OrderType.LIMIT,
                 action=OrderAction.SELL,
                 quantity=quantity,
-                limit_price=new_short_put['bid'],
-                trade_id=f"roll_bear_put_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                limit_price=new_short_call['bid'],
+                trade_id=f"roll_bear_call_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 order_details={
-                    'strategy': 'bear_put_spread',
-                    'leg': 'short_put',
+                    'strategy': 'bear_call_spread',
+                    'leg': 'short_call',
                     'expiration': new_expiration,
-                    'strike': new_short_put['strike'],
+                    'strike': new_short_call['strike'],
                     'trade_details': new_trade_details,
                     'roll': True
                 }
             )
-            roll_orders.append(short_put_order)
+            roll_orders.append(short_call_order)
             
-            logger.info(f"Created roll orders for {symbol} bear put spread to {new_expiration}")
+            # Create long call order for the new expiration
+            long_call_order = Order(
+                symbol=symbol,
+                option_symbol=new_trade_details['long_call_contract'],
+                order_type=OrderType.LIMIT,
+                action=OrderAction.BUY,
+                quantity=quantity,
+                limit_price=new_long_call['ask'],
+                trade_id=f"roll_bear_call_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                order_details={
+                    'strategy': 'bear_call_spread',
+                    'leg': 'long_call',
+                    'expiration': new_expiration,
+                    'strike': new_long_call['strike'],
+                    'trade_details': new_trade_details,
+                    'roll': True
+                }
+            )
+            roll_orders.append(long_call_order)
+            
+            logger.info(f"Created roll orders for {symbol} bear call spread to {new_expiration}")
             
             # Combine exit orders and roll orders
             return exit_orders + roll_orders
@@ -826,82 +820,79 @@ class BearPutSpreadStrategy(StrategyOptimizable):
             logger.error(f"Error selecting roll expiration for {symbol}: {str(e)}")
             return ""
     
-    def _select_strikes_by_delta(self, put_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
+    def _select_strikes_by_delta(self, call_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
         """Select strikes based on delta targets."""
-        if 'delta' not in put_options.columns:
+        if 'delta' not in call_options.columns:
             logger.warning("Delta data not available, falling back to OTM percentage method")
-            return self._select_strikes_by_otm_percentage(put_options, current_price)
+            return self._select_strikes_by_otm_percentage(call_options, current_price)
             
-        # For puts, delta is negative, so take absolute value
-        put_options['abs_delta'] = put_options['delta'].abs()
+        # Find short call with delta closest to target
+        short_call_options = call_options.copy()
+        short_call_options['delta_diff'] = abs(short_call_options['delta'] - self.params['short_call_delta'])
+        short_call_options = short_call_options.sort_values('delta_diff')
         
-        # Find long put with delta closest to target
-        long_put_options = put_options.copy()
-        long_put_options['delta_diff'] = abs(long_put_options['abs_delta'] - self.params['long_put_delta'])
-        long_put_options = long_put_options.sort_values('delta_diff')
-        
-        if long_put_options.empty:
+        if short_call_options.empty:
             return None, None
             
-        long_put = long_put_options.iloc[0].to_dict()
+        short_call = short_call_options.iloc[0].to_dict()
         
-        # Find short put with delta closest to target (and lower strike than long put)
-        short_put_options = put_options[put_options['strike'] < long_put['strike']].copy()
-        short_put_options['delta_diff'] = abs(short_put_options['abs_delta'] - self.params['short_put_delta'])
-        short_put_options = short_put_options.sort_values('delta_diff')
+        # Find long call with delta closest to target (and higher strike than short call)
+        long_call_options = call_options[call_options['strike'] > short_call['strike']].copy()
+        long_call_options['delta_diff'] = abs(long_call_options['delta'] - self.params['long_call_delta'])
+        long_call_options = long_call_options.sort_values('delta_diff')
         
-        if short_put_options.empty:
-            return long_put, None
+        if long_call_options.empty:
+            return short_call, None
             
-        short_put = short_put_options.iloc[0].to_dict()
+        long_call = long_call_options.iloc[0].to_dict()
         
-        return long_put, short_put
+        return short_call, long_call
     
-    def _select_strikes_by_otm_percentage(self, put_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
+    def _select_strikes_by_otm_percentage(self, call_options: pd.DataFrame, current_price: float) -> Tuple[Dict, Dict]:
         """Select strikes based on OTM percentage."""
-        # Calculate strike prices based on OTM percentages
-        target_long_strike = current_price * (1 - self.params['long_otm_percentage'])
-        target_short_strike = current_price * (1 - self.params['long_otm_percentage'] - self.params['short_otm_extra'])
+        # Calculate target strike prices
+        short_call_target = current_price * (1 + self.params['short_otm_percentage'])
+        long_call_target = current_price * (1 + self.params['short_otm_percentage'] + self.params['long_otm_extra'])
         
-        # Find closest long put strike
-        put_options['long_strike_diff'] = abs(put_options['strike'] - target_long_strike)
-        put_options = put_options.sort_values('long_strike_diff')
+        # Find closest short call strike
+        call_options['short_strike_diff'] = abs(call_options['strike'] - short_call_target)
+        call_options = call_options.sort_values('short_strike_diff')
         
-        if put_options.empty:
+        if call_options.empty:
             return None, None
             
-        long_put = put_options.iloc[0].to_dict()
+        short_call = call_options.iloc[0].to_dict()
         
-        # Find short put strike that is below long put strike
-        short_put_options = put_options[put_options['strike'] < long_put['strike']].copy()
-        short_put_options['short_strike_diff'] = abs(short_put_options['strike'] - target_short_strike)
-        short_put_options = short_put_options.sort_values('short_strike_diff')
+        # Find long call with strike higher than short call
+        long_call_options = call_options[call_options['strike'] > short_call['strike']].copy()
+        long_call_options['long_strike_diff'] = abs(long_call_options['strike'] - long_call_target)
+        long_call_options = long_call_options.sort_values('long_strike_diff')
         
-        if short_put_options.empty:
-            return long_put, None
+        if long_call_options.empty:
+            return short_call, None
             
-        short_put = short_put_options.iloc[0].to_dict()
+        long_call = long_call_options.iloc[0].to_dict()
         
         # Ensure the spread width is reasonable
-        spread_width = long_put['strike'] - short_put['strike']
+        spread_width = long_call['strike'] - short_call['strike']
         if spread_width < 1.0 or spread_width > current_price * 0.10:  # 10% max width
             logger.warning(f"Selected strikes create an unusual spread width: {spread_width}")
             
-        return long_put, short_put
+        return short_call, long_call
 
     # ======================== OPTIMIZATION METHODS ========================
     def get_optimization_params(self) -> Dict[str, Any]:
         """Define parameters that can be optimized and their ranges."""
         return {
             'target_dte': {'type': 'int', 'min': 20, 'max': 60, 'step': 5},
-            'long_put_delta': {'type': 'float', 'min': 0.35, 'max': 0.55, 'step': 0.05},
-            'short_put_delta': {'type': 'float', 'min': 0.15, 'max': 0.30, 'step': 0.05},
-            'spread_width_pct': {'type': 'float', 'min': 0.02, 'max': 0.06, 'step': 0.01},
-            'profit_target_percent': {'type': 'int', 'min': 40, 'max': 80, 'step': 10},
-            'loss_limit_percent': {'type': 'int', 'min': 15, 'max': 40, 'step': 5},
+            'short_call_delta': {'type': 'float', 'min': 0.30, 'max': 0.45, 'step': 0.05},
+            'long_call_delta': {'type': 'float', 'min': 0.10, 'max': 0.25, 'step': 0.05},
+            'short_otm_percentage': {'type': 'float', 'min': 0.00, 'max': 0.03, 'step': 0.01},
+            'long_otm_extra': {'type': 'float', 'min': 0.02, 'max': 0.06, 'step': 0.01},
+            'profit_target_percent': {'type': 'int', 'min': 40, 'max': 80, 'step': 5},
+            'loss_limit_percent': {'type': 'int', 'min': 100, 'max': 200, 'step': 10},
             'min_iv_percentile': {'type': 'int', 'min': 20, 'max': 40, 'step': 5},
             'max_iv_percentile': {'type': 'int', 'min': 50, 'max': 70, 'step': 5},
-            'momentum_threshold': {'type': 'float', 'min': -0.05, 'max': -0.01, 'step': 0.01},
         }
         
     def evaluate_performance(self, backtest_results: Dict[str, Any]) -> float:

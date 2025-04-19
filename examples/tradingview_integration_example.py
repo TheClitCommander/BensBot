@@ -22,7 +22,9 @@ from trading_bot.data.repository import MarketDataRepository
 from trading_bot.data.models import MarketData, DataSource, TimeFrame
 from trading_bot.data.asset_indicators import AssetIndicatorSuite, AssetType, AssetIndicatorConfig
 from trading_bot.strategy.strategy_rotator import StrategyRotator
-from trading_bot.strategy.strategy_rotator import MomentumStrategy, TrendFollowingStrategy, MeanReversionStrategy
+from trading_bot.strategies.stocks.momentum.momentum_strategy import MomentumStrategy
+from trading_bot.strategies.stocks.trend.trend_following_strategy import TrendFollowingStrategy
+from trading_bot.strategies.stocks.mean_reversion.mean_reversion_strategy import MeanReversionStrategy
 from trading_bot.integrations.tradingview_integration import TradingViewIntegration
 
 # Configure logging

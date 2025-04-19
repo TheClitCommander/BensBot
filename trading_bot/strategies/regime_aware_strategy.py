@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 
 # Local imports
-from trading_bot.strategies.base_strategy import Strategy
+from trading_bot.strategies.strategy_template import StrategyTemplate as Strategy
 from trading_bot.utils.market_regime import MarketRegimeClassifier
 from trading_bot.market_data.indicators import calculate_atr, calculate_rsi, calculate_macd
 

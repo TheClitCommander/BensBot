@@ -33,6 +33,34 @@ class PriceChannelBreakoutStrategy(StrategyOptimizable):
     This strategy generates buy signals when price breaks above the highest high
     of a defined period, and sell signals when price breaks below the lowest low
     of a defined period.
+    
+    Key features:
+    - Uses rolling highest highs and lowest lows to establish dynamic support/resistance channels
+    - Applies confirmation rules to filter out false breakouts and whipsaws
+    - Implements volume filters to verify breakout authenticity and strength
+    - Incorporates volatility analysis to adapt to changing market conditions
+    - Adjusts position sizing and risk parameters based on ATR volatility measures
+    - Features both fixed and trailing stop mechanisms for risk management
+    
+    Trading logic:
+    - Buy signals: Triggered when price closes above the highest high of the channel period
+      with confirmation over specified number of bars and volume/volatility validation
+    - Sell signals: Generated when price closes below the lowest low of the channel period
+      with similar confirmation requirements and filters
+    - Stop placement: Calculated dynamically using ATR to adapt to each asset's volatility profile
+    - Take profit: Set as a multiple of the risk, creating a favorable risk-reward ratio
+    
+    Ideal market conditions:
+    - Markets transitioning from consolidation to trending phases
+    - Assets with well-defined trading ranges before breakouts
+    - Sufficient volatility to generate meaningful price movements
+    - Adequate liquidity and volume to support sustained moves after breakouts
+    
+    Limitations:
+    - Susceptible to false breakouts in choppy or highly volatile markets
+    - May have delayed entries due to confirmation requirements
+    - Performance dependent on proper channel period selection for each asset
+    - Requires careful parameter optimization across different market regimes
     """
     
     def __init__(
@@ -322,6 +350,34 @@ class VolumeBreakoutStrategy(StrategyOptimizable):
     
     This strategy identifies key support/resistance levels and generates
     signals when price breaks through these levels with above-average volume.
+    
+    Key features:
+    - Identifies significant support and resistance levels using price action analysis
+    - Requires volume confirmation to validate the authenticity of breakouts
+    - Focuses on consolidation patterns before breakouts for higher probability trades
+    - Implements adaptive stop loss based on market volatility and support/resistance
+    - Features volatility-adjusted position sizing through ATR calculations
+    - Includes price pattern filters to identify higher probability breakout setups
+    
+    Trading logic:
+    - Buy signals: Generated when price breaks above resistance with volume exceeding threshold
+      after a period of price consolidation within a defined range
+    - Sell signals: Triggered when price breaks below support with strong volume confirmation
+      following a period of consolidation or distribution pattern
+    - Stop placement: Placed at the opposite side of the consolidation range or key support/resistance
+    - Take profit: Calculated using measured move projections or ATR multiples
+    
+    Ideal market conditions:
+    - Markets with clear volume trends and price-volume correlations
+    - Assets showing periods of consolidation before significant moves
+    - Trading environments with institutional participation (visible in volume patterns)
+    - Markets with sufficient liquidity to provide meaningful volume signals
+    
+    Limitations:
+    - Volume data may be less reliable in certain markets (e.g., thinly traded stocks)
+    - Difficulty in distinguishing between breakout volume and exhaustion volume
+    - May generate too few signals in low-volatility environments
+    - Requires continuous monitoring of support/resistance level validity
     """
     
     def __init__(
@@ -645,6 +701,34 @@ class VolatilityBreakoutStrategy(StrategyOptimizable):
     
     This strategy identifies periods of low volatility (contraction) followed
     by volatility expansion, which often signals the beginning of a new trend.
+    
+    Key features:
+    - Identifies volatility contraction periods using ATR (Average True Range) analysis
+    - Detects significant volatility expansion events that often precede trending moves
+    - Uses price direction during expansion to determine trade direction
+    - Incorporates volume confirmation to validate the authenticity of the breakout
+    - Adapts position sizing and stop loss parameters to current volatility conditions
+    - Features dynamic take-profit targets based on volatility multiples
+    
+    Trading logic:
+    - Identifies periods of decreasing volatility (contraction phases)
+    - Monitors for sudden expansion in volatility (20%+ increase in ATR)
+    - Generates buy signals when volatility expands with upward price movement
+    - Generates sell signals when volatility expands with downward price movement
+    - Uses close price movement relative to prior close to determine direction
+    - Sets stop loss using volatility-adjusted distance from entry price
+    
+    Ideal market conditions:
+    - Assets transitioning from consolidation to trending behavior
+    - Markets with cyclical volatility patterns (compression followed by expansion)
+    - Assets with sufficient liquidity to handle volatility events
+    - Environments where volatility signals precede directional price movements
+    
+    Limitations:
+    - May generate false signals during choppy market conditions
+    - Performance varies across different types of volatility environments
+    - Can be triggered by short-term volatility spikes without follow-through
+    - May miss opportunities in steadily trending markets without volatility events
     """
     
     def __init__(

@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Local imports
 from trading_bot.backtesting.backtest_engine import BacktestEngine
-from trading_bot.strategies.base_strategy import Strategy
+from trading_bot.strategies.strategy_template import StrategyTemplate as Strategy
 from trading_bot.optimization.objective_functions import ObjectiveFunction
 from trading_bot.optimization.advanced_objectives import ObjectiveFunction
 

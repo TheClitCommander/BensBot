@@ -33,6 +33,37 @@ class MultiTimeframeCorrelationStrategy(StrategyOptimizable):
     Analyzes cross-asset correlations across multiple timeframes to identify trading
     opportunities based on correlation divergences, relative strength, and statistical
     relationships between related assets.
+    
+    Key features:
+    - Systematically identifies and tracks correlations between related assets
+    - Detects statistically significant divergences in correlated asset pairs
+    - Measures relative strength to determine outperforming/underperforming assets
+    - Calculates beta relationships for risk adjustment across correlated pairs
+    - Monitors correlation regime changes that might signal emerging opportunities
+    - Uses both higher and lower timeframes for confirmation and precise entries
+    - Implements advanced position sizing based on correlation exposure
+    
+    Trading methodology:
+    - Scans the universe to identify strongly correlated asset pairs
+    - Monitors these pairs for divergences from their statistical relationship
+    - Generates signals when divergences reach statistical significance (z-score based)
+    - Takes positions anticipating reversion to the established correlation
+    - Uses technical indicators on lower timeframes for entry timing
+    - Manages risk using volatility-adjusted position sizing and correlation-aware limits
+    - Features time-based and performance-based exit rules
+    
+    Ideal market conditions:
+    - Markets with clear fundamental relationships between assets (e.g., sector peers)
+    - Environments with established statistical correlations between instruments
+    - Periods where correlations remain relatively stable but allow temporary divergences
+    - Markets with sufficient liquidity across all correlated assets
+    
+    Limitations:
+    - Requires substantial historical data to establish reliable correlations
+    - Correlation relationships can break down during market regime changes
+    - Computationally intensive due to matrix calculations across multiple assets
+    - Performance dependent on the stability of statistical relationships
+    - May generate fewer signals than single-asset strategies
     """
     
     def __init__(

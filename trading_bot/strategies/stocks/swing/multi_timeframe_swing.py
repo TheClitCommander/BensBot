@@ -33,6 +33,35 @@ class MultiTimeframeSwingStrategy(StrategyOptimizable):
     Uses a higher timeframe for trend identification and a lower timeframe
     for entry triggers, incorporating advanced technical indicators, statistical
     filtering, and sophisticated exit strategies.
+    
+    Key features:
+    - Implements a two-timeframe approach: higher for trend direction, lower for precise entries
+    - Uses exponential moving average (EMA) ribbons to identify trend strength and direction
+    - Incorporates Fibonacci retracement levels to find key support and resistance zones
+    - Employs oscillators (RSI, Stochastic) to identify momentum shifts and entry points
+    - Confirms entry signals with volume analysis and MACD convergence/divergence
+    - Features sophisticated risk management with ATR-based position sizing and stops
+    - Adjusts strategy parameters dynamically based on market volatility regimes
+    - Includes correlation analysis to limit overexposure to similar market movements
+    
+    Ideal market conditions:
+    - Established trends with identifiable pullbacks or consolidations
+    - Markets with sufficient volatility to create meaningful swing opportunities
+    - Liquid markets with clear volume patterns supporting price movements
+    - Environments where multiple timeframes show harmonic confirmation patterns
+    
+    Limitations:
+    - More complex implementation requiring additional data and computation
+    - May miss early trend reversals due to emphasis on confirmation
+    - Performance varies across different assets and volatility regimes
+    - Requires regular parameter optimization to adapt to changing market conditions
+    
+    Risk management features:
+    - Dynamic position sizing based on asset volatility and account risk parameters
+    - Time-based exit rules to limit exposure to prolonged drawdowns
+    - Multiple stop-loss mechanisms including fixed, trailing, and volatility-adjusted stops
+    - Correlation filters to prevent overexposure to similar market factors
+    - Earnings and news event avoidance to reduce event risk exposure
     """
     
     def __init__(

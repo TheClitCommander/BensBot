@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 # Import available strategies
 try:
-    from trading_bot.strategies.momentum_strategy import MomentumStrategy
-    from trading_bot.strategies.mean_reversion_strategy import MeanReversionStrategy
-    from trading_bot.strategies.trend_following_strategy import TrendFollowingStrategy
-    from trading_bot.strategies.volatility_breakout import VolatilityBreakout
+    from trading_bot.strategies.stocks.momentum import MomentumStrategy
+    from trading_bot.strategies.stocks.mean_reversion import MeanReversionStrategy
+    from trading_bot.strategies.stocks.trend import TrendFollowingStrategy
+    from trading_bot.strategies.stocks.breakout import VolatilityBreakoutStrategy
     STRATEGIES_AVAILABLE = True
 except ImportError:
     logger.warning("Some strategy modules could not be imported. Using mock strategies.")
@@ -49,7 +49,7 @@ except ImportError:
         """Mock trend following strategy"""
         pass
     
-    class VolatilityBreakout(BaseStrategy):
+    class VolatilityBreakoutStrategy(BaseStrategy):
         """Mock volatility breakout strategy"""
         pass
 
@@ -73,16 +73,16 @@ class StrategyFactory:
         
         # Create strategy based on type
         if strategy_type.lower() == "momentum":
-            return MomentumStrategy(config)
+            return MomentumStrategy("Momentum Strategy", config)
         elif strategy_type.lower() == "mean_reversion":
-            return MeanReversionStrategy(config)
+            return MeanReversionStrategy("Mean Reversion Strategy", config)
         elif strategy_type.lower() == "trend_following":
-            return TrendFollowingStrategy(config)
+            return TrendFollowingStrategy("Trend Following Strategy", config)
         elif strategy_type.lower() == "volatility_breakout":
-            return VolatilityBreakout(config)
+            return VolatilityBreakoutStrategy("Volatility Breakout Strategy", config)
         else:
             logger.warning(f"Unknown strategy type: {strategy_type}. Using momentum strategy.")
-            return MomentumStrategy(config)
+            return MomentumStrategy("Momentum Strategy", config)
     
     @staticmethod
     def available_strategies():
