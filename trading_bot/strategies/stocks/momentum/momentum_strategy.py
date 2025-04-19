@@ -11,410 +11,365 @@ import logging
 from typing import Dict, List, Optional, Union, Any, Tuple
 from datetime import datetime, timedelta
 
+from trading_bot.strategies.base.stock_base import StockBaseStrategy
+from trading_bot.strategies.strategy_template import Signal, SignalType, TimeFrame, MarketRegime
+
 logger = logging.getLogger(__name__)
 
-class MomentumStrategy:
+class MomentumStrategy(StockBaseStrategy):
     """
     Momentum trading strategy implementation that identifies and trades based on
     price momentum and trend strength.
     """
     
-    def __init__(self, lookback_period: int = 14, overbought: int = 70, oversold: int = 30):
+    # Default parameters specific to momentum trading
+    DEFAULT_MOMENTUM_PARAMS = {
+        "lookback_period": 14,
+        "overbought": 70,
+        "oversold": 30,
+        "adx_threshold": 25,
+        "trend_strength_threshold": 0.05,
+        "use_volatility_adjustment": True,
+        "cross_sectional": False,
+        "signal_threshold": 0.0,
+        "volatility_lookback": 20,
+        "stop_loss_atr_multiple": 2.0,
+        "take_profit_atr_multiple": 3.0,
+    }
+    
+    def __init__(self, name: str, parameters: Optional[Dict[str, Any]] = None,
+                metadata: Optional[Dict[str, Any]] = None):
         """
         Initialize the momentum strategy with configurable parameters.
         
         Args:
-            lookback_period: Period for calculating momentum indicators
-            overbought: RSI threshold for overbought condition
-            oversold: RSI threshold for oversold condition
+            name: Strategy name
+            parameters: Strategy parameters (will be merged with default parameters)
+            metadata: Strategy metadata
         """
-        self.name = "Momentum"
-        self.lookback_period = lookback_period
-        self.overbought = overbought
-        self.oversold = oversold
-        self.description = "Trades based on price momentum and trend strength"
+        # Start with default stock parameters
+        momentum_params = self.DEFAULT_STOCK_PARAMS.copy()
         
-    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        # Add momentum-specific parameters
+        momentum_params.update(self.DEFAULT_MOMENTUM_PARAMS)
+        
+        # Override with provided parameters
+        if parameters:
+            momentum_params.update(parameters)
+        
+        # Initialize the parent class
+        super().__init__(name=name, parameters=momentum_params, metadata=metadata)
+        
+        logger.info(f"Initialized momentum strategy: {name}")
+    
+    def get_parameter_space(self) -> Dict[str, List[Any]]:
         """
-        Generate trade signals based on momentum indicators.
+        Get parameter space for optimization.
+        
+        Returns:
+            Dictionary mapping parameter names to lists of possible values
+        """
+        return {
+            "lookback_period": [5, 10, 14, 20, 30],
+            "overbought": [65, 70, 75, 80],
+            "oversold": [20, 25, 30, 35],
+            "adx_threshold": [20, 25, 30],
+            "trend_strength_threshold": [0.03, 0.05, 0.07],
+            "use_volatility_adjustment": [True, False],
+            "cross_sectional": [True, False],
+            "signal_threshold": [0.0, 0.1, 0.2],
+            "stop_loss_atr_multiple": [1.5, 2.0, 2.5, 3.0],
+            "take_profit_atr_multiple": [2.0, 3.0, 4.0, 5.0],
+        }
+    
+    def calculate_indicators(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Dict[str, pd.DataFrame]]:
+        """
+        Calculate momentum indicators for all symbols.
         
         Args:
-            data: DataFrame with OHLCV price data
+            data: Dictionary mapping symbols to DataFrames with OHLCV data
             
         Returns:
-            DataFrame with added momentum indicators and trade signals
+            Dictionary of calculated indicators for each symbol
         """
-        if len(data) < self.lookback_period:
-            return pd.DataFrame()
+        indicators = {}
         
-        # Calculate price momentum (close price change over lookback period)
-        data = data.copy()
-        data['momentum'] = data['close'].pct_change(self.lookback_period)
+        for symbol, df in data.items():
+            # Skip if insufficient data
+            if len(df) < self.parameters["lookback_period"]:
+                continue
+                
+            try:
+                # Calculate price momentum (close price change over lookback period)
+                lookback = self.parameters["lookback_period"]
+                momentum = df['close'].pct_change(lookback)
+                
+                # Calculate Rate of Change (ROC)
+                roc = (df['close'] / df['close'].shift(lookback) - 1) * 100
+                
+                # Calculate RSI
+                delta = df['close'].diff()
+                gain = delta.where(delta > 0, 0).rolling(window=lookback).mean()
+                loss = -delta.where(delta < 0, 0).rolling(window=lookback).mean()
+                
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+                
+                # Calculate Average Directional Index (ADX) for trend strength
+                high_diff = df['high'].diff()
+                low_diff = df['low'].diff().abs()
+                
+                plus_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0)
+                minus_dm = low_diff.where((low_diff > high_diff) & (low_diff > 0), 0)
+                
+                tr = pd.DataFrame({
+                    'hl': df['high'] - df['low'],
+                    'hc': (df['high'] - df['close'].shift()).abs(),
+                    'lc': (df['low'] - df['close'].shift()).abs()
+                }).max(axis=1)
+                
+                atr = tr.rolling(window=lookback).mean()
+                
+                plus_di = 100 * (plus_dm.rolling(window=lookback).mean() / atr)
+                minus_di = 100 * (minus_dm.rolling(window=lookback).mean() / atr)
+                
+                dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
+                adx = dx.rolling(window=lookback).mean()
+                
+                # Prepare volatility-adjusted momentum if enabled
+                if self.parameters["use_volatility_adjustment"]:
+                    volatility = df['close'].pct_change().rolling(
+                        window=self.parameters["volatility_lookback"]).std() * np.sqrt(252)
+                    # Add small constant to avoid division by zero
+                    vol_adj_momentum = momentum / (volatility + 1e-8)
+                else:
+                    vol_adj_momentum = momentum
+                
+                # Store indicators
+                indicators[symbol] = {
+                    "momentum": pd.DataFrame({"momentum": momentum}),
+                    "roc": pd.DataFrame({"roc": roc}),
+                    "rsi": pd.DataFrame({"rsi": rsi}),
+                    "adx": pd.DataFrame({"adx": adx}),
+                    "atr": pd.DataFrame({"atr": atr}),
+                    "vol_adj_momentum": pd.DataFrame({"vol_adj_momentum": vol_adj_momentum}),
+                    "plus_di": pd.DataFrame({"plus_di": plus_di}),
+                    "minus_di": pd.DataFrame({"minus_di": minus_di})
+                }
+                
+            except Exception as e:
+                logger.error(f"Error calculating momentum indicators for {symbol}: {e}")
         
-        # Calculate Rate of Change (ROC)
-        data['roc'] = (data['close'] / data['close'].shift(self.lookback_period) - 1) * 100
+        return indicators
+    
+    def generate_signals(self, data: Dict[str, pd.DataFrame]) -> Dict[str, Signal]:
+        """
+        Generate trading signals based on momentum indicators.
         
-        # Calculate RSI
-        delta = data['close'].diff()
-        gain = delta.where(delta > 0, 0).rolling(window=self.lookback_period).mean()
-        loss = -delta.where(delta < 0, 0).rolling(window=self.lookback_period).mean()
+        Args:
+            data: Dictionary mapping symbols to DataFrames with OHLCV data
+            
+        Returns:
+            Dictionary mapping symbols to Signal objects
+        """
+        # Apply stock-specific filters from the base class
+        filtered_data = self.filter_universe(data)
         
-        rs = gain / loss
-        data['rsi'] = 100 - (100 / (1 + rs))
-        
-        # Calculate Average Directional Index (ADX) for trend strength
-        high_diff = data['high'].diff()
-        low_diff = data['low'].diff().abs()
-        
-        plus_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0)
-        minus_dm = low_diff.where((low_diff > high_diff) & (low_diff > 0), 0)
-        
-        tr = pd.DataFrame({
-            'hl': data['high'] - data['low'],
-            'hc': (data['high'] - data['close'].shift()).abs(),
-            'lc': (data['low'] - data['close'].shift()).abs()
-        }).max(axis=1)
-        
-        atr = tr.rolling(window=self.lookback_period).mean()
-        
-        plus_di = 100 * (plus_dm.rolling(window=self.lookback_period).mean() / atr)
-        minus_di = 100 * (minus_dm.rolling(window=self.lookback_period).mean() / atr)
-        
-        dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-        data['adx'] = dx.rolling(window=self.lookback_period).mean()
+        # Calculate indicators
+        indicators = self.calculate_indicators(filtered_data)
         
         # Generate signals
-        data['signal'] = 0  # 0 = no signal, 1 = buy, -1 = sell
+        signals = {}
         
-        # Buy conditions:
-        # 1. Strong upward momentum (positive ROC)
-        # 2. RSI was oversold but is now increasing
-        # 3. ADX indicates strong trend (> 25)
-        data.loc[(data['roc'] > 0) & 
-                 (data['rsi'] > self.oversold) & 
-                 (data['rsi'].shift(1) <= self.oversold) &
-                 (data['adx'] > 25), 'signal'] = 1
-        
-        # Sell conditions:
-        # 1. Momentum turns negative
-        # 2. RSI reaches overbought territory
-        # 3. Price momentum weakening
-        data.loc[(data['roc'] < 0) | 
-                 (data['rsi'] >= self.overbought) |
-                 ((data['momentum'].shift(1) > data['momentum']) & 
-                  (data['momentum'] > 0) & 
-                  (data['rsi'] > 60)), 'signal'] = -1
-        
-        return data
-    
-    def get_parameters(self) -> Dict[str, Any]:
-        """Return strategy parameters"""
-        return {
-            "lookback_period": self.lookback_period,
-            "overbought": self.overbought,
-            "oversold": self.oversold
-        }
-    
-    def set_parameters(self, params: Dict[str, Any]) -> None:
-        """Set strategy parameters"""
-        if 'lookback_period' in params:
-            self.lookback_period = params['lookback_period']
-        if 'overbought' in params:
-            self.overbought = params['overbought']
-        if 'oversold' in params:
-            self.oversold = params['oversold']
-            
-    def optimize(self, data: pd.DataFrame, 
-                 param_grid: Optional[Dict[str, List[Any]]] = None) -> Tuple[Dict[str, Any], Dict[str, float]]:
-        """
-        Optimize strategy parameters based on historical data.
-        
-        Args:
-            data: Historical price data
-            param_grid: Dictionary of parameter names and possible values
-            
-        Returns:
-            Tuple of (best parameters, performance metrics)
-        """
-        if param_grid is None:
-            param_grid = {
-                'lookback_period': [5, 10, 14, 20, 30],
-                'overbought': [65, 70, 75, 80],
-                'oversold': [20, 25, 30, 35]
-            }
-        
-        best_params = {}
-        best_performance = {
-            'sharpe_ratio': 0,
-            'profit_factor': 0,
-            'win_rate': 0,
-            'max_drawdown': 100
-        }
-        
-        # Grid search through parameters
-        # In a real implementation, this would be more sophisticated
-        for lookback in param_grid['lookback_period']:
-            for overbought in param_grid['overbought']:
-                for oversold in param_grid['oversold']:
-                    # Skip invalid combinations
-                    if oversold >= overbought:
-                        continue
-                        
-                    # Set parameters and generate signals
-                    self.set_parameters({
-                        'lookback_period': lookback,
-                        'overbought': overbought,
-                        'oversold': oversold
-                    })
+        for symbol, symbol_indicators in indicators.items():
+            try:
+                # Get latest data
+                latest_data = filtered_data[symbol].iloc[-1]
+                prev_data = filtered_data[symbol].iloc[-2] if len(filtered_data[symbol]) > 1 else None
+                latest_price = latest_data['close']
+                latest_timestamp = latest_data.name if isinstance(latest_data.name, datetime) else datetime.now()
+                
+                # Get indicator values
+                latest_momentum = symbol_indicators["momentum"].iloc[-1]["momentum"]
+                latest_roc = symbol_indicators["roc"].iloc[-1]["roc"]
+                latest_rsi = symbol_indicators["rsi"].iloc[-1]["rsi"]
+                latest_adx = symbol_indicators["adx"].iloc[-1]["adx"]
+                latest_atr = symbol_indicators["atr"].iloc[-1]["atr"]
+                
+                # Previous values for trend analysis
+                prev_rsi = symbol_indicators["rsi"].iloc[-2]["rsi"] if len(symbol_indicators["rsi"]) > 1 else 50
+                prev_momentum = symbol_indicators["momentum"].iloc[-2]["momentum"] if len(symbol_indicators["momentum"]) > 1 else 0
+                
+                # Get parameters
+                lookback = self.parameters["lookback_period"]
+                overbought = self.parameters["overbought"]
+                oversold = self.parameters["oversold"]
+                adx_threshold = self.parameters["adx_threshold"]
+                stop_loss_atr_multiple = self.parameters["stop_loss_atr_multiple"]
+                take_profit_atr_multiple = self.parameters["take_profit_atr_multiple"]
+                
+                # Generate signal based on momentum conditions
+                signal_type = None
+                confidence = 0.0
+                
+                # BUY conditions:
+                # 1. Strong upward momentum (positive ROC)
+                # 2. RSI was oversold but is now increasing
+                # 3. ADX indicates strong trend
+                if (latest_roc > 0 and
+                    latest_rsi > oversold and
+                    prev_rsi <= oversold and
+                    latest_adx > adx_threshold):
                     
-                    result = self.generate_signals(data)
-                    metrics = self._calculate_performance(result)
+                    signal_type = SignalType.BUY
                     
-                    # Update best parameters if performance is better
-                    if metrics['sharpe_ratio'] > best_performance['sharpe_ratio']:
-                        best_performance = metrics
-                        best_params = self.get_parameters()
-        
-        return best_params, best_performance
-    
-    def _calculate_performance(self, data: pd.DataFrame) -> Dict[str, float]:
-        """Calculate performance metrics for the strategy"""
-        if 'signal' not in data.columns or len(data) == 0:
-            return {
-                'sharpe_ratio': 0,
-                'profit_factor': 0,
-                'win_rate': 0,
-                'max_drawdown': 100
-            }
-        
-        # Calculate daily returns based on signals
-        data['position'] = data['signal'].shift(1).fillna(0)
-        data['returns'] = data['close'].pct_change() * data['position']
-        
-        # Calculate metrics
-        total_return = data['returns'].sum()
-        volatility = data['returns'].std() * np.sqrt(252)  # Annualized
-        sharpe_ratio = total_return / volatility if volatility > 0 else 0
-        
-        # Calculate win rate and profit factor
-        winning_trades = data[data['returns'] > 0]['returns'].sum()
-        losing_trades = abs(data[data['returns'] < 0]['returns'].sum())
-        win_count = len(data[data['returns'] > 0])
-        total_trades = len(data[data['returns'] != 0])
-        
-        win_rate = win_count / total_trades if total_trades > 0 else 0
-        profit_factor = winning_trades / losing_trades if losing_trades > 0 else 0
-        
-        # Calculate drawdown
-        cumulative_returns = (1 + data['returns']).cumprod()
-        running_max = cumulative_returns.cummax()
-        drawdown = (cumulative_returns / running_max - 1)
-        max_drawdown = abs(drawdown.min()) * 100
-        
-        return {
-            'sharpe_ratio': sharpe_ratio,
-            'profit_factor': profit_factor,
-            'win_rate': win_rate,
-            'max_drawdown': max_drawdown
-        }
-
-    def calculate_momentum(
-        self, 
-        prices: pd.DataFrame, 
-        lookback: int = None
-    ) -> pd.DataFrame:
-        """
-        Calculate momentum indicators for given price data.
-        
-        Args:
-            prices: DataFrame of asset prices (index=dates, columns=assets)
-            lookback: Lookback period (uses all periods in self.lookback_periods if None)
+                    # Calculate confidence based on multiple factors
+                    # 1. Momentum strength
+                    momentum_confidence = min(0.3, abs(latest_momentum) * 5)
+                    
+                    # 2. Trend strength via ADX
+                    trend_confidence = min(0.3, latest_adx / 100)
+                    
+                    # 3. RSI confirmation
+                    rsi_confirmation = min(0.2, (latest_rsi - oversold) / 20)
+                    
+                    # 4. Volume confirmation (if available)
+                    volume_confidence = 0.0
+                    if 'volume' in filtered_data[symbol].columns:
+                        avg_volume = filtered_data[symbol]['volume'].rolling(window=20).mean().iloc[-1]
+                        if filtered_data[symbol]['volume'].iloc[-1] > avg_volume:
+                            volume_confidence = 0.2
+                    
+                    confidence = min(0.9, momentum_confidence + trend_confidence + rsi_confirmation + volume_confidence)
+                    
+                    # Calculate stop loss and take profit based on ATR
+                    stop_loss = latest_price - (latest_atr * stop_loss_atr_multiple)
+                    take_profit = latest_price + (latest_atr * take_profit_atr_multiple)
+                
+                # SELL conditions:
+                # 1. Momentum turns negative
+                # 2. RSI reaches overbought territory
+                # 3. Momentum weakening after being strong
+                elif (latest_roc < 0 or
+                      latest_rsi >= overbought or
+                      (prev_momentum > latest_momentum and latest_momentum > 0 and latest_rsi > 60)):
+                    
+                    signal_type = SignalType.SELL
+                    
+                    # Calculate confidence for sell signal
+                    # 1. Negative momentum strength
+                    momentum_confidence = min(0.3, abs(latest_momentum) * 5) if latest_momentum < 0 else 0.1
+                    
+                    # 2. Overbought confirmation
+                    overbought_confirmation = min(0.3, (latest_rsi - 50) / 30) if latest_rsi > 50 else 0.1
+                    
+                    # 3. Trend weakening
+                    trend_weakening = min(0.2, (prev_momentum - latest_momentum) * 10) if prev_momentum > latest_momentum else 0.1
+                    
+                    # 4. Volume confirmation (if available)
+                    volume_confidence = 0.0
+                    if 'volume' in filtered_data[symbol].columns:
+                        avg_volume = filtered_data[symbol]['volume'].rolling(window=20).mean().iloc[-1]
+                        if filtered_data[symbol]['volume'].iloc[-1] > avg_volume:
+                            volume_confidence = 0.2
+                    
+                    confidence = min(0.9, momentum_confidence + overbought_confirmation + trend_weakening + volume_confidence)
+                    
+                    # Calculate stop loss and take profit for short position
+                    stop_loss = latest_price + (latest_atr * stop_loss_atr_multiple)
+                    take_profit = latest_price - (latest_atr * take_profit_atr_multiple)
+                
+                # Create signal if we have a valid signal type
+                if signal_type:
+                    signals[symbol] = Signal(
+                        symbol=symbol,
+                        signal_type=signal_type,
+                        price=latest_price,
+                        timestamp=latest_timestamp,
+                        confidence=confidence,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                        timeframe=TimeFrame.DAY_1,
+                        metadata={
+                            "strategy_type": "momentum",
+                            "lookback_period": lookback,
+                            "rsi": latest_rsi,
+                            "adx": latest_adx,
+                            "momentum": latest_momentum,
+                            "roc": latest_roc,
+                            "atr": latest_atr
+                        }
+                    )
             
-        Returns:
-            DataFrame of momentum indicators
-        """
-        if lookback is None:
-            # Calculate for all lookback periods and average
-            momentum_indicators = []
-            
-            for period in self.lookback_periods:
-                momentum = prices.pct_change(period)
-                momentum_indicators.append(momentum)
-            
-            # Average across all lookback periods
-            momentum = pd.concat(momentum_indicators).groupby(level=0).mean()
-        else:
-            # Calculate for specific lookback period
-            momentum = prices.pct_change(lookback)
-        
-        if self.volatility_adjust and momentum.shape[0] > self.volatility_lookback:
-            # Adjust momentum by volatility
-            volatility = prices.pct_change().rolling(self.volatility_lookback).std() * np.sqrt(252)
-            # Add small constant to avoid division by zero
-            momentum = momentum / (volatility + 1e-8)
-        
-        if self.cross_sectional:
-            # Cross-sectional momentum (rank assets relative to each other)
-            momentum = momentum.rank(axis=1, pct=True) - 0.5
-        
-        return momentum
-    
-    def generate_signals(
-        self, 
-        prices: pd.DataFrame, 
-        market_data: Optional[pd.DataFrame] = None
-    ) -> pd.DataFrame:
-        """
-        Generate trade signals based on momentum indicators.
-        
-        Args:
-            prices: DataFrame of asset prices (index=dates, columns=assets)
-            market_data: Additional market data (optional)
-            
-        Returns:
-            DataFrame of trade signals (1=buy, -1=sell, 0=neutral)
-        """
-        # Calculate momentum indicators
-        momentum = self.calculate_momentum(prices)
-        
-        # Generate signals based on momentum and threshold
-        signals = pd.DataFrame(0, index=momentum.index, columns=momentum.columns)
-        
-        # Long positions for momentum > threshold
-        signals[momentum > self.signal_threshold] = 1
-        
-        # Short positions for momentum < -threshold (if threshold is positive)
-        if self.signal_threshold > 0:
-            signals[momentum < -self.signal_threshold] = -1
-        else:
-            # If threshold is 0 or negative, short the bottom half
-            signals[momentum < 0] = -1
-        
-        # Store signals for performance tracking
-        self.signals = signals.iloc[-1].to_dict()
+            except Exception as e:
+                logger.error(f"Error generating momentum signal for {symbol}: {e}")
         
         return signals
     
-    def optimize_parameters(
-        self, 
-        prices: pd.DataFrame, 
-        market_data: Optional[pd.DataFrame] = None
-    ) -> Dict[str, Any]:
+    def _calculate_performance_score(self, signals: Dict[str, Signal], 
+                                   data: Dict[str, Any]) -> float:
         """
-        Optimize strategy parameters based on historical performance.
+        Calculate a performance score for the generated signals.
         
         Args:
-            prices: DataFrame of asset prices
-            market_data: Additional market data (optional)
+            signals: Generated signals
+            data: Input data
             
         Returns:
-            Dict of optimized parameters
+            Performance score (higher is better)
         """
-        # Simple optimization example - test a few parameter combinations
-        best_sharpe = -np.inf
-        best_params = {}
-        
-        # Test combinations of lookback periods and thresholds
-        lookback_options = [[20, 60, 120], [5, 20, 60], [10, 30, 90]]
-        threshold_options = [0.0, 0.1, 0.2]
-        volatility_adjust_options = [True, False]
-        
-        # Use last 1 year of data for optimization
-        test_prices = prices.iloc[-252:]
-        
-        for lookback in lookback_options:
-            for threshold in threshold_options:
-                for vol_adjust in volatility_adjust_options:
-                    # Create test strategy with these parameters
-                    test_strategy = MomentumStrategy(
-                        lookback_periods=lookback,
-                        signal_threshold=threshold,
-                        volatility_adjust=vol_adjust
-                    )
-                    
-                    # Generate signals
-                    signals = test_strategy.generate_signals(test_prices)
-                    
-                    # Simulate returns (simplified)
-                    shifted_signals = signals.shift(1).fillna(0)
-                    returns = test_prices.pct_change() * shifted_signals
-                    
-                    # Calculate performance
-                    portfolio_returns = returns.mean(axis=1)
-                    
-                    annualized_return = portfolio_returns.mean() * 252
-                    volatility = portfolio_returns.std() * np.sqrt(252)
-                    sharpe = annualized_return / volatility if volatility > 0 else 0
-                    
-                    if sharpe > best_sharpe:
-                        best_sharpe = sharpe
-                        best_params = {
-                            "lookback_periods": lookback,
-                            "signal_threshold": threshold,
-                            "volatility_adjust": vol_adjust,
-                            "sharpe_ratio": sharpe,
-                            "annualized_return": annualized_return,
-                            "volatility": volatility
-                        }
-        
-        logger.info(f"Optimized {self.name} strategy parameters: {best_params}")
-        return best_params
-    
-    def update_performance(
-        self, 
-        prices: pd.DataFrame, 
-        signals: pd.DataFrame = None
-    ) -> Dict[str, float]:
-        """
-        Update strategy performance metrics.
-        
-        Args:
-            prices: DataFrame of asset prices
-            signals: Signals used (if None, generates new signals)
+        if not signals:
+            return 0.0
             
-        Returns:
-            Dict of performance metrics
-        """
-        if signals is None:
-            signals = self.generate_signals(prices)
+        # This is a simplified performance calculation
+        # In a real implementation, you would simulate trades and calculate metrics
+            
+        # Assume we have forward returns in the data (for backtest evaluation)
+        forward_returns = {}
+        for symbol, signal in signals.items():
+            if symbol not in data:
+                continue
+                
+            signal_date_idx = None
+            for i, date in enumerate(data[symbol].index):
+                if date >= signal.timestamp:
+                    signal_date_idx = i
+                    break
+                    
+            if signal_date_idx is None or signal_date_idx >= len(data[symbol]) - 5:
+                continue
+                
+            # Get 5-day forward return
+            entry_price = signal.price
+            exit_price = data[symbol]['close'].iloc[signal_date_idx + 5]
+            
+            # Calculate return based on signal type
+            if signal.signal_type == SignalType.BUY:
+                ret = (exit_price / entry_price) - 1
+            else:  # SELL signal
+                ret = 1 - (exit_price / entry_price)
+                
+            forward_returns[symbol] = ret * signal.confidence
         
-        # Simulate returns (signals are applied to next day's returns)
-        shifted_signals = signals.shift(1).fillna(0)
-        asset_returns = prices.pct_change()
-        strategy_returns = asset_returns * shifted_signals
+        if not forward_returns:
+            return 0.0
+            
+        # Average return across all signals
+        avg_return = sum(forward_returns.values()) / len(forward_returns)
         
-        # Calculate portfolio returns (equal weight across assets with signals)
-        portfolio_returns = strategy_returns.mean(axis=1)
+        # Simple Sharpe ratio (no risk-free rate)
+        if len(forward_returns) > 1:
+            std_dev = np.std(list(forward_returns.values()))
+            if std_dev > 0:
+                sharpe = avg_return / std_dev
+            else:
+                sharpe = avg_return if avg_return > 0 else 0
+        else:
+            sharpe = avg_return if avg_return > 0 else 0
         
-        # Calculate performance metrics
-        total_return = (1 + portfolio_returns).prod() - 1
-        annualized_return = portfolio_returns.mean() * 252
-        volatility = portfolio_returns.std() * np.sqrt(252)
-        sharpe_ratio = annualized_return / volatility if volatility > 0 else 0
-        
-        # Calculate drawdown
-        cum_returns = (1 + portfolio_returns).cumprod()
-        running_max = cum_returns.cummax()
-        drawdown = (cum_returns / running_max) - 1
-        max_drawdown = drawdown.min()
-        
-        # Calculate win rate
-        win_rate = (portfolio_returns > 0).mean()
-        
-        # Store performance metrics
-        self.performance = {
-            "total_return": total_return,
-            "annualized_return": annualized_return,
-            "volatility": volatility,
-            "sharpe_ratio": sharpe_ratio,
-            "max_drawdown": max_drawdown,
-            "win_rate": win_rate,
-            "last_updated": datetime.now().isoformat()
-        }
-        
-        return self.performance
+        return sharpe
     
-    def regime_compatibility(self, regime: str) -> float:
+    def regime_compatibility(self, regime: MarketRegime) -> float:
         """
         Get compatibility score for this strategy in the given market regime.
         
@@ -422,53 +377,16 @@ class MomentumStrategy:
             regime: Market regime
             
         Returns:
-            Compatibility score (0-2, higher is better)
+            Compatibility score (0-1, higher is better)
         """
         # Regime compatibility scores
         compatibility = {
-            "bull": 1.8,     # Excellent in bullish markets
-            "bear": 0.5,     # Poor in bearish markets
-            "sideways": 0.4, # Poor in sideways markets
-            "high_vol": 0.6, # Below average in high volatility
-            "low_vol": 1.2,  # Good in low volatility
-            "crisis": 0.2,   # Very poor in crisis
-            "unknown": 1.0   # Neutral in unknown regime
+            MarketRegime.BULL_TREND: 0.9,      # Excellent in bull trends
+            MarketRegime.BEAR_TREND: 0.3,      # Poor in bear trends
+            MarketRegime.CONSOLIDATION: 0.2,   # Poor in sideways markets
+            MarketRegime.HIGH_VOLATILITY: 0.3, # Below average in high volatility
+            MarketRegime.LOW_VOLATILITY: 0.6,  # Good in low volatility
+            MarketRegime.UNKNOWN: 0.5          # Neutral in unknown regime
         }
         
-        return compatibility.get(regime.lower(), 1.0)
-    
-    def get_current_signals(self) -> Dict[str, int]:
-        """
-        Get the most recent signals.
-        
-        Returns:
-            Dict of assets and their signals
-        """
-        return self.signals
-    
-    def get_performance(self) -> Dict[str, float]:
-        """
-        Get current performance metrics.
-        
-        Returns:
-            Dict of performance metrics
-        """
-        return self.performance
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert strategy to dict representation.
-        
-        Returns:
-            Dict representation of strategy
-        """
-        return {
-            "name": self.name,
-            "type": "momentum",
-            "lookback_periods": self.lookback_period,
-            "signal_threshold": self.signal_threshold,
-            "volatility_adjust": self.volatility_adjust,
-            "cross_sectional": self.cross_sectional,
-            "performance": self.performance,
-            "signals": self.signals
-        } 
+        return compatibility.get(regime, 0.5) 
