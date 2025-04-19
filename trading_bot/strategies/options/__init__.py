@@ -5,7 +5,11 @@ This module provides option-specific trading strategies organized by strategy ty
 """
 
 from trading_bot.strategies.options.income import CoveredCallStrategy, CashSecuredPutStrategy, MarriedPutStrategy
-from trading_bot.strategies.options.spreads import BullCallSpreadStrategy, BullPutSpreadStrategy, BearPutSpreadStrategy
+from trading_bot.strategies.options.spreads import (
+    BullCallSpreadStrategy, BullPutSpreadStrategy, BearPutSpreadStrategy,
+    IronCondorStrategy, ButterflySpread, CalendarSpread,
+    CollarStrategy, RatioSpread, StrangleStrategy
+)
 
 __all__ = [
     # Income strategies
@@ -17,4 +21,10 @@ __all__ = [
     'BullCallSpreadStrategy',
     'BullPutSpreadStrategy',
     'BearPutSpreadStrategy',
+    'IronCondorStrategy',
+    'ButterflySpread', 
+    'CalendarSpread',
+    'CollarStrategy',
+    'RatioSpread',
+    'StrangleStrategy',
 ] 
