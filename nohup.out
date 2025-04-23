@@ -1,0 +1,302 @@
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.87:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+2025-04-21 13:09:45,034 - dashboard - WARNING - Error importing trading_bot components: No module named 'ta'
+2025-04-21 13:09:45,034 - dashboard - WARNING - Using mock data for dashboard
+2025-04-21 13:09:45,034 - dashboard - INFO - Successfully initialized Alpaca and Finnhub API clients
+2025-04-21 13:09:45,123 - dashboard - INFO - Fetching general market news
+2025-04-21 13:09:45,124 - dashboard - INFO - Started news fetching thread
+2025-04-21 13:09:45,124 - dashboard - INFO - Searching news for 'market'
+2025-04-21 13:09:45.124 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:09:45.125 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:09:45.125 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:09:45.125 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:09:45,125 - dashboard - INFO - Current API usage: {}
+2025-04-21 13:09:45,130 - trading_bot.ml.lstm_model - WARNING - TensorFlow not available. LSTM model will not work.
+2025-04-21 13:09:45,131 - root - WARNING - XGBoost not available. XGBoost model will not work.
+2025-04-21 13:09:45,131 - root - WARNING - TensorFlow not available. Some models will be disabled.
+2025-04-21 13:09:45,136 - trading_bot.common.config_utils - INFO - No state file found at /Users/bendickinson/Desktop/Trading/data/risk_manager/state.json
+2025-04-21 13:09:45,136 - RiskManager - INFO - Risk Manager initialized
+2025-04-21 13:09:45,136 - dashboard - INFO - Risk manager initialized with Moderate profile
+2025-04-21 13:09:45,138 - dashboard - INFO - Converting time range '1 Minute' to 0.0006944444444444444 days with minute resolution
+2025-04-21 13:09:45,516 - dashboard - INFO - API call to nytimes. Total today: 1
+2025-04-21 13:09:45,689 - dashboard - INFO - Searching news for 'market'
+2025-04-21 13:09:45,689 - dashboard - INFO - Current API usage: {}
+2025-04-21 13:09:45,939 - dashboard - INFO - API call to nytimes. Total today: 1
+2025-04-21 13:09:46,099 - dashboard - INFO - API call to nytimes. Total today: 2
+2025-04-21 13:09:46,100 - dashboard - ERROR - Error with NY Times API: object of type 'NoneType' has no len()
+2025-04-21 13:09:46,100 - dashboard - INFO - Trying finnhub API for 'market'
+2025-04-21 13:09:46,100 - dashboard - INFO - Trying marketaux API for 'market'
+2025-04-21 13:09:46,340 - dashboard - INFO - API call to nytimes. Total today: 2
+2025-04-21 13:09:46,340 - dashboard - ERROR - Error with NY Times API: object of type 'NoneType' has no len()
+2025-04-21 13:09:46,340 - dashboard - INFO - Trying finnhub API for 'market'
+2025-04-21 13:09:46,340 - dashboard - INFO - Trying marketaux API for 'market'
+2025-04-21 13:09:47,828 - dashboard - INFO - API call to marketaux. Total today: 1
+2025-04-21 13:09:47,829 - dashboard - INFO - Got 3 articles from MarketAux
+2025-04-21 13:09:47,829 - dashboard - INFO - Trying newsdata API for 'market'
+2025-04-21 13:09:47,864 - dashboard - INFO - API call to marketaux. Total today: 1
+2025-04-21 13:09:47,864 - dashboard - INFO - Got 3 articles from MarketAux
+2025-04-21 13:09:47,864 - dashboard - INFO - Trying newsdata API for 'market'
+2025-04-21 13:09:48,181 - dashboard - INFO - API call to newsdata. Total today: 1
+2025-04-21 13:09:48,181 - dashboard - INFO - Got 10 articles from NewsData
+2025-04-21 13:09:48,181 - dashboard - INFO - Returning 6 news items
+2025-04-21 13:09:48,231 - dashboard - INFO - API call to newsdata. Total today: 1
+2025-04-21 13:09:48,231 - dashboard - INFO - Got 10 articles from NewsData
+2025-04-21 13:09:48,232 - dashboard - INFO - Returning 6 news items
+2025-04-21 13:09:48,232 - dashboard - INFO - Fetching news for AAPL
+2025-04-21 13:09:48,232 - dashboard - INFO - Searching news for 'AAPL'
+2025-04-21 13:09:48.232 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:09:48.233 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:09:48,233 - dashboard - INFO - Current API usage: {'nytimes': 2, 'marketaux': 1, 'newsdata': 1}
+2025-04-21 13:09:48,486 - dashboard - INFO - API call to nytimes. Total today: 3
+2025-04-21 13:09:49,064 - dashboard - INFO - API call to nytimes. Total today: 4
+2025-04-21 13:09:49,064 - dashboard - ERROR - Error with NY Times API: object of type 'NoneType' has no len()
+2025-04-21 13:09:49,064 - dashboard - INFO - Trying finnhub API for 'AAPL'
+2025-04-21 13:09:49,349 - dashboard - INFO - API call to finnhub. Total today: 1
+2025-04-21 13:09:49,349 - dashboard - WARNING - Finnhub API error: 401
+2025-04-21 13:09:49,349 - dashboard - WARNING - marketaux rate limited: 1/1 calls in last 300s
+2025-04-21 13:09:49,349 - dashboard - WARNING - Skipping marketaux API as it's currently rate limited
+2025-04-21 13:09:49,349 - dashboard - INFO - Trying newsdata API for 'AAPL'
+2025-04-21 13:09:49,533 - dashboard - INFO - API call to newsdata. Total today: 2
+2025-04-21 13:09:49,533 - dashboard - INFO - Got 10 articles from NewsData
+2025-04-21 13:09:49,534 - dashboard - INFO - Returning 6 news items
+2025-04-21 13:10:19,643 - dashboard - INFO - Fetching news for MSFT
+2025-04-21 13:10:19,644 - dashboard - INFO - Searching news for 'MSFT'
+2025-04-21 13:10:19.644 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:10:19.644 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:10:19,644 - dashboard - INFO - Current API usage: {'nytimes': 4, 'marketaux': 1, 'newsdata': 2, 'finnhub': 1}
+2025-04-21 13:10:19,861 - dashboard - INFO - API call to nytimes. Total today: 5
+2025-04-21 13:10:20,406 - dashboard - INFO - API call to nytimes. Total today: 6
+2025-04-21 13:10:20,406 - dashboard - ERROR - Error with NY Times API: object of type 'NoneType' has no len()
+2025-04-21 13:10:20,406 - dashboard - INFO - Trying finnhub API for 'MSFT'
+2025-04-21 13:10:20,572 - dashboard - INFO - API call to finnhub. Total today: 2
+2025-04-21 13:10:20,572 - dashboard - WARNING - Finnhub API error: 401
+2025-04-21 13:10:20,572 - dashboard - WARNING - marketaux rate limited: 1/1 calls in last 300s
+2025-04-21 13:10:20,572 - dashboard - WARNING - Skipping marketaux API as it's currently rate limited
+2025-04-21 13:10:20,572 - dashboard - INFO - Trying newsdata API for 'MSFT'
+2025-04-21 13:10:20,767 - dashboard - INFO - API call to newsdata. Total today: 3
+2025-04-21 13:10:20,767 - dashboard - INFO - Got 10 articles from NewsData
+2025-04-21 13:10:20,767 - dashboard - INFO - Returning 6 news items
+2025-04-21 13:10:50,879 - dashboard - INFO - Fetching news for GOOGL
+2025-04-21 13:10:50,879 - dashboard - INFO - Searching news for 'GOOGL'
+2025-04-21 13:10:50.879 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:10:50.879 Thread 'Thread-1 (_fetch_loop)': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2025-04-21 13:10:50,879 - dashboard - INFO - Current API usage: {'nytimes': 6, 'marketaux': 1, 'newsdata': 3, 'finnhub': 2}
+2025-04-21 13:10:51,128 - dashboard - INFO - API call to nytimes. Total today: 7
+2025-04-21 13:10:51,744 - dashboard - INFO - API call to nytimes. Total today: 8
+2025-04-21 13:10:51,744 - dashboard - ERROR - Error with NY Times API: object of type 'NoneType' has no len()
+2025-04-21 13:10:51,744 - dashboard - INFO - Trying finnhub API for 'GOOGL'
+2025-04-21 13:10:51,908 - dashboard - INFO - API call to finnhub. Total today: 3
+2025-04-21 13:10:51,908 - dashboard - WARNING - Finnhub API error: 401
+2025-04-21 13:10:51,909 - dashboard - WARNING - marketaux rate limited: 1/1 calls in last 300s
+2025-04-21 13:10:51,909 - dashboard - WARNING - Skipping marketaux API as it's currently rate limited
+2025-04-21 13:10:51,909 - dashboard - INFO - Trying newsdata API for 'GOOGL'
+2025-04-21 13:10:52,142 - dashboard - INFO - API call to newsdata. Total today: 4
+2025-04-21 13:10:52,150 - dashboard - INFO - Got 10 articles from NewsData
+2025-04-21 13:10:52,150 - dashboard - INFO - Returning 6 news items
+Warning: Unable to import CoveredCallStrategy
+Warning: Unable to import ProtectivePutStrategy
+Warning: Unable to import IronCondorStrategy
+Warning: Unable to import IronButterflyStrategy
+Warning: Unable to import BullPutSpreadStrategy
+Warning: Unable to import BearCallSpreadStrategy
+Warning: Unable to import LongStraddleStrategy
+Warning: Unable to import ShortStraddleStrategy
+Warning: Unable to import LongStrangleStrategy
+Warning: Unable to import ShortStrangleStrategy
+  Stopping...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.87:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+2025-04-21 13:11:23.559 Script compilation error
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 549, in _run_script
+    code = self._script_cache.get_bytecode(script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
+    filebody = magic.add_magic(filebody, script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/magic.py", line 46, in add_magic
+    tree = ast.parse(code, script_path, "exec")
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ast.py", line 54, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/Users/bendickinson/Desktop/Trading/app.py", line 2171
+    {risk_level} ({current_risk_multiplier:.2f}x)
+                                            ^
+SyntaxError: invalid decimal literal
+2025-04-21 13:11:23.562 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+  Stopping...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.87:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+/Users/bendickinson/Desktop/Trading/app.py:2248: SyntaxWarning: invalid escape sequence '\s'
+  """
+2025-04-21 13:13:27.122 Script compilation error
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 549, in _run_script
+    code = self._script_cache.get_bytecode(script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
+    filebody = magic.add_magic(filebody, script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/magic.py", line 46, in add_magic
+    tree = ast.parse(code, script_path, "exec")
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ast.py", line 54, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/Users/bendickinson/Desktop/Trading/app.py", line 2922
+    <strong>{source}</strong> • {time_ago}
+                              ^
+SyntaxError: invalid character '•' (U+2022)
+2025-04-21 13:13:27.124 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+  Stopping...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.87:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+/Users/bendickinson/Desktop/Trading/app.py:2248: SyntaxWarning: invalid escape sequence '\s'
+  """
+2025-04-21 13:15:24.568 Script compilation error
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 549, in _run_script
+    code = self._script_cache.get_bytecode(script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
+    filebody = magic.add_magic(filebody, script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/magic.py", line 46, in add_magic
+    tree = ast.parse(code, script_path, "exec")
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ast.py", line 54, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/Users/bendickinson/Desktop/Trading/app.py", line 2716
+    """Ensure we have diverse sources in our news display"""
+       ^^^^^^
+SyntaxError: invalid syntax
+2025-04-21 13:15:24.571 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+  Stopping...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.87:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+/Users/bendickinson/Desktop/Trading/app.py:2248: SyntaxWarning: invalid escape sequence '\s'
+  """
+2025-04-21 13:16:29.506 Script compilation error
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 549, in _run_script
+    code = self._script_cache.get_bytecode(script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
+    filebody = magic.add_magic(filebody, script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/magic.py", line 46, in add_magic
+    tree = ast.parse(code, script_path, "exec")
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ast.py", line 54, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/Users/bendickinson/Desktop/Trading/app.py", line 2902
+    <div style="height: 450px; overflow: hidden; margin-bottom: 15px; padding: 0; border-radius: 5px; border: 1px solid #ddd; border-left: 5px solid #2E7D32; background-color: white; position: relative;">
+IndentationError: unexpected indent
+2025-04-21 13:16:29.509 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+  Stopping...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.87:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+2025-04-21 13:23:05.688 Script compilation error
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 549, in _run_script
+    code = self._script_cache.get_bytecode(script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
+    filebody = magic.add_magic(filebody, script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/magic.py", line 46, in add_magic
+    tree = ast.parse(code, script_path, "exec")
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ast.py", line 54, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/Users/bendickinson/Desktop/Trading/app_fixed.py", line 3006
+    """, unsafe_allow_html=True)
+                               ^
+SyntaxError: unmatched ')'
+2025-04-21 13:23:05.690 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8502
+  Network URL: http://192.168.1.87:8502
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+/Users/bendickinson/Desktop/Trading/app_fixed2.py:2248: SyntaxWarning: invalid escape sequence '\s'
+  """
+2025-04-21 13:23:46.682 Script compilation error
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 549, in _run_script
+    code = self._script_cache.get_bytecode(script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_cache.py", line 72, in get_bytecode
+    filebody = magic.add_magic(filebody, script_path)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/magic.py", line 46, in add_magic
+    tree = ast.parse(code, script_path, "exec")
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ast.py", line 54, in parse
+    return compile(source, filename, mode, flags,
+                   _feature_version=feature_version, optimize=optimize)
+  File "/Users/bendickinson/Desktop/Trading/app_fixed2.py", line 2941
+    """, unsafe_allow_html=True)
+                               ^
+SyntaxError: unmatched ')'
+2025-04-21 13:23:46.684 Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8503
+  Network URL: http://192.168.1.87:8503
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+  Stopping...
+  Stopping...
+  Stopping...
