@@ -16,6 +16,14 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
 
+# Import the typed settings system
+try:
+    from trading_bot.config.typed_settings import load_config, NotificationSettings
+    from trading_bot.config.migration_utils import get_config_from_legacy_path
+    TYPED_SETTINGS_AVAILABLE = True
+except ImportError:
+    TYPED_SETTINGS_AVAILABLE = False
+
 # Try to import optional dependencies
 # Desktop notifications
 try:
@@ -49,12 +57,13 @@ class NotificationManager:
         "CRITICAL": {"color": "#ff0000", "emoji": "🚨", "importance": 4}
     }
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, settings: Optional[NotificationSettings] = None):
         """
         Initialize the notification manager with configuration.
         
         Args:
             config_path: Path to configuration file (JSON format)
+            settings: Optional NotificationSettings object from the typed settings system
         """
         self.logger = logging.getLogger("NotificationManager")
         self.logger.setLevel(logging.INFO)
@@ -88,11 +97,20 @@ class NotificationManager:
                 "channel": "#trading-alerts",
                 "username": "Trading Bot",
                 "min_level": "INFO"
+            },
+            "telegram": {
+                "enabled": False,
+                "token": "",
+                "chat_id": "",
+                "min_level": "INFO"
             }
         }
         
-        # Load configuration if provided
-        if config_path:
+        # If NotificationSettings provided, use it to update our config
+        if settings and TYPED_SETTINGS_AVAILABLE:
+            self._load_from_typed_settings(settings)
+        # Otherwise try to load from config path or environment variables
+        elif config_path:
             self._load_config(config_path)
         
         # Initialize notification history and rate limiting
@@ -119,17 +137,100 @@ class NotificationManager:
             config_path: Path to the configuration file
         """
         try:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    user_config = json.load(f)
+            # First try to use the typed settings system if available
+            if TYPED_SETTINGS_AVAILABLE:
+                try:
+                    # Get full config and extract notification settings
+                    full_config = get_config_from_legacy_path(config_path)
+                    self._load_from_typed_settings(full_config.notifications)
+                    return
+                except Exception as e:
+                    self.logger.warning(f"Could not load with typed settings: {e}")
+                    self.logger.warning("Falling back to legacy config loading")
+            
+            # If typed settings not available or failed, use legacy loading
+            with open(config_path, 'r') as f:
+                if config_path.endswith('.json'):
+                    loaded_config = json.load(f)
+                elif config_path.endswith(('.yaml', '.yml')):
+                    import yaml
+                    loaded_config = yaml.safe_load(f)
+                else:
+                    # Try JSON first, then YAML
+                    try:
+                        loaded_config = json.load(f)
+                    except json.JSONDecodeError:
+                        import yaml
+                        loaded_config = yaml.safe_load(f)
                 
-                # Update configuration with user settings
-                self._update_nested_dict(self.config, user_config)
+                # If the config has a 'notifications' key, use that section
+                if "notifications" in loaded_config:
+                    loaded_config = loaded_config["notifications"]
+                
+                self._update_nested_dict(self.config, loaded_config)
                 self.logger.info(f"Loaded configuration from {config_path}")
-            else:
-                self.logger.warning(f"Configuration file not found at {config_path}, using defaults")
         except Exception as e:
-            self.logger.error(f"Error loading configuration: {e}")
+            self.logger.error(f"Failed to load config from {config_path}: {e}")
+            self.logger.error("Using default configuration")
+    
+    def _load_from_typed_settings(self, settings: NotificationSettings) -> None:
+        """
+        Load configuration from a NotificationSettings object.
+        
+        Args:
+            settings: NotificationSettings object from the typed settings system
+        """
+        try:
+            # Convert NotificationSettings to a dict for our internal config format
+            self.config["enabled"] = settings.enable_notifications
+            
+            # Telegram settings
+            if settings.telegram_token and settings.telegram_chat_id:
+                self.config["telegram"] = {
+                    "enabled": True,
+                    "token": settings.telegram_token,
+                    "chat_id": settings.telegram_chat_id,
+                    "min_level": "INFO"  # Default to INFO for now
+                }
+            
+            # Slack settings
+            if settings.slack_webhook:
+                self.config["slack"] = {
+                    "enabled": True,
+                    "webhook": settings.slack_webhook,
+                    "min_level": "INFO"  # Default to INFO for now
+                }
+            
+            # Email settings
+            if all([settings.email_to, settings.email_from, settings.email_smtp_server, 
+                    settings.email_username, settings.email_password]):
+                self.config["email"] = {
+                    "enabled": True,
+                    "smtp_server": settings.email_smtp_server,
+                    "smtp_port": settings.email_smtp_port or 587,
+                    "sender_email": settings.email_from,
+                    "sender_password": settings.email_password,
+                    "recipients": [settings.email_to] if isinstance(settings.email_to, str) else settings.email_to,
+                    "min_level": "WARNING"  # Default to WARNING for email
+                }
+            
+            # Update notification levels if specified
+            if settings.notification_levels:
+                # Find the minimum level from the list
+                valid_levels = [level for level in settings.notification_levels 
+                               if level.upper() in self.LEVELS]
+                if valid_levels:
+                    min_importance = min(self.LEVELS[level.upper()]["importance"] 
+                                      for level in valid_levels)
+                    for level_name, level_data in self.LEVELS.items():
+                        if level_data["importance"] == min_importance:
+                            self.config["min_level"] = level_name
+                            break
+            
+            self.logger.info("Loaded configuration from typed settings")
+        except Exception as e:
+            self.logger.error(f"Error loading from typed settings: {e}")
+            self.logger.error("Using default configuration")
     
     def _update_nested_dict(self, d: Dict, u: Dict) -> Dict:
         """
@@ -490,8 +591,19 @@ if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(level=logging.INFO)
     
-    # Create notification manager
-    manager = NotificationManager()
+    # Create notification manager using the typed settings system if available
+    if TYPED_SETTINGS_AVAILABLE:
+        try:
+            # Load configuration from the canonical config file
+            settings = load_config("./trading_bot/config/config.yaml")
+            manager = NotificationManager(settings=settings.notifications)
+            print("Using typed settings configuration")
+        except Exception as e:
+            print(f"Could not load typed settings: {e}")
+            print("Falling back to default configuration")
+            manager = NotificationManager()
+    else:
+        manager = NotificationManager()
     
     # Send a test notification
     result = manager.send_notification(
@@ -500,4 +612,4 @@ if __name__ == "__main__":
         level="INFO"
     )
     
-    print(f"Notification result: {result}") 
+    print(f"Notification result: {result}")

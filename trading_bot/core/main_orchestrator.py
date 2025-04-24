@@ -12,12 +12,30 @@ import logging
 import time
 import signal
 import threading
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional, Set, Union
 from datetime import datetime, timedelta
+import os
 
 from trading_bot.core.service_registry import ServiceRegistry
-from trading_bot.core.interfaces import DataProvider, Strategy, RiskManager, OrderManager
+from trading_bot.core.interfaces import DataProvider, StrategyInterface as Strategy, RiskManager, OrderManager
+
+# Import legacy config utils for backwards compatibility
 from trading_bot.utils.config_parser import load_config_file, validate_calendar_spread_config
+
+# Import typed settings if available
+try:
+    from trading_bot.config.typed_settings import (
+        load_config as typed_load_config, 
+        TradingBotSettings,
+        OrchestratorSettings,
+        RiskSettings,
+        BrokerSettings,
+        DataSettings
+    )
+    from trading_bot.config.migration_utils import get_config_from_legacy_path
+    TYPED_SETTINGS_AVAILABLE = True
+except ImportError:
+    TYPED_SETTINGS_AVAILABLE = False
 from trading_bot.data.data_manager import DataManager
 from trading_bot.strategies.options.spreads.calendar_spread import CalendarSpread as CalendarSpreadStrategy
 from trading_bot.strategies.stocks.swing import StockSwingTradingStrategy
@@ -29,16 +47,34 @@ class MainOrchestrator:
     Main orchestrator that coordinates the trading bot components.
     """
     
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, settings: Optional[TradingBotSettings] = None):
         """
         Initialize the orchestrator.
         
         Args:
             config_path: Path to the main configuration file
+            settings: Optional typed settings object (new approach)
         """
-        self.config = load_config_file(config_path)
-        if not self.config:
-            raise ValueError(f"Failed to load configuration from {config_path}")
+        # Store initialization parameters
+        self.config_path = config_path
+        self.typed_settings = settings
+        
+        # Try to load configuration with typed settings first if available
+        if TYPED_SETTINGS_AVAILABLE and not settings and os.path.exists(config_path):
+            try:
+                # Check if config path looks like a YAML file for typed settings
+                if config_path.endswith(('.yaml', '.yml', '.json')):
+                    self.typed_settings = typed_load_config(config_path)
+                    logger.info(f"Loaded typed settings from {config_path}")
+            except Exception as e:
+                logger.warning(f"Could not load typed settings: {e}, falling back to legacy config")
+        
+        # Initialize traditional config (for backward compatibility)
+        self.config = {}
+        if not self.typed_settings:
+            self.config = load_config_file(config_path)
+            if not self.config:
+                raise ValueError(f"Failed to load configuration from {config_path}")
         
         self.running = False
         self.should_stop = threading.Event()
@@ -77,19 +113,51 @@ class MainOrchestrator:
     def _initialize_data_manager(self) -> None:
         """Initialize data manager based on configuration."""
         try:
-            # Get data manager configuration
-            data_config = self.config.get("data_providers", {})
-            storage_config = self.config.get("data_storage", {})
-            realtime_config = self.config.get("realtime_providers", {})
-            
-            # Create combined config
-            data_manager_config = {
-                "data_providers": data_config,
-                "data_storage": storage_config,
-                "realtime_providers": realtime_config,
-                "enable_cache": True,
-                "cache_expiry_minutes": 30
-            }
+            # Check if we have typed settings for data manager
+            if TYPED_SETTINGS_AVAILABLE and self.typed_settings and hasattr(self.typed_settings, 'data'):
+                data_settings = self.typed_settings.data
+                
+                # Create combined config from typed settings
+                data_manager_config = {
+                    "data_providers": {
+                        "tradier": {
+                            "api_key": data_settings.tradier_api_key,
+                            "account_id": data_settings.tradier_account_id
+                        },
+                        "alpha_vantage": {
+                            "api_key": data_settings.alpha_vantage_api_key
+                        }
+                    },
+                    "data_storage": {
+                        "type": data_settings.storage_type,
+                        "path": data_settings.storage_path
+                    },
+                    "realtime_providers": {
+                        "tradier": {
+                            "enabled": data_settings.enable_realtime_updates
+                        }
+                    },
+                    "enable_cache": data_settings.enable_cache,
+                    "cache_expiry_minutes": data_settings.cache_expiry_minutes
+                }
+                
+                logger.info("Using data manager configuration from typed settings")
+            else:
+                # Use legacy config
+                data_config = self.config.get("data_providers", {})
+                storage_config = self.config.get("data_storage", {})
+                realtime_config = self.config.get("realtime_providers", {})
+                
+                # Create combined config
+                data_manager_config = {
+                    "data_providers": data_config,
+                    "data_storage": storage_config,
+                    "realtime_providers": realtime_config,
+                    "enable_cache": True,
+                    "cache_expiry_minutes": 30
+                }
+                
+                logger.info("Using data manager configuration from legacy config")
             
             # Initialize data manager
             data_manager = DataManager(data_manager_config)
@@ -106,13 +174,52 @@ class MainOrchestrator:
     def _initialize_strategies(self) -> None:
         """Initialize trading strategies based on configuration."""
         try:
-            # Load strategies from configuration
-            strategy_configs = self.config.get("strategies", {})
-            
-            for strategy_name, strategy_config in strategy_configs.items():
-                if not strategy_config.get("enabled", False):
-                    logger.info(f"Strategy '{strategy_name}' is disabled, skipping initialization")
-                    continue
+            # Check if we have typed settings for strategies
+            if TYPED_SETTINGS_AVAILABLE and self.typed_settings and hasattr(self.typed_settings, 'strategy'):
+                # Get strategy settings
+                strategy_settings = self.typed_settings.strategy
+                
+                # Import our strategy factory if available
+                try:
+                    from trading_bot.strategies.strategy_factory import StrategyFactory
+                    factory_available = True
+                except ImportError:
+                    factory_available = False
+                
+                # Create strategies from typed settings using factory if available
+                if factory_available:
+                    for strategy_name in strategy_settings.enabled_strategies:
+                        try:
+                            # Create strategy using the factory with typed settings
+                            strategy = StrategyFactory.create_strategy(
+                                strategy_type=strategy_name,
+                                settings=strategy_settings,
+                                enable_notifications=strategy_settings.enable_notifications
+                            )
+                            
+                            # Register strategy
+                            self.strategies[strategy_name] = strategy
+                            self.active_strategies.add(strategy_name)
+                            
+                            logger.info(f"Strategy {strategy_name} initialized using strategy factory")
+                        except Exception as e:
+                            logger.error(f"Failed to initialize strategy {strategy_name}: {e}")
+                else:
+                    # Fall back to individual strategy creation
+                    # For now we'll handle specifically configured strategies
+                    if "calendar_spread" in strategy_settings.enabled_strategies:
+                        self._initialize_calendar_spread("calendar_spread", {})
+                    
+                    if "swing_trading" in strategy_settings.enabled_strategies:
+                        self._initialize_swing_trading("swing_trading", {})
+            else:
+                # Load strategies from legacy configuration
+                strategy_configs = self.config.get("strategies", {})
+                
+                for strategy_name, strategy_config in strategy_configs.items():
+                    if not strategy_config.get("enabled", False):
+                        logger.info(f"Strategy '{strategy_name}' is disabled, skipping initialization")
+                        continue
                 
                 # Initialize the strategy based on type
                 if strategy_name == "calendar_spread":
@@ -186,12 +293,115 @@ class MainOrchestrator:
     
     def _initialize_risk_manager(self) -> None:
         """Initialize risk manager based on configuration."""
-        # This would load and register the risk manager
+        try:
+            # Check if we have typed settings for risk manager
+            if TYPED_SETTINGS_AVAILABLE and self.typed_settings and hasattr(self.typed_settings, 'risk'):
+                # Import risk manager
+                from trading_bot.risk.risk_manager import RiskManager
+                
+                # Create risk manager with typed settings
+                risk_manager = RiskManager(settings=self.typed_settings.risk)
+                
+                # Import and apply risk check capability
+                from trading_bot.risk.risk_check import add_check_trade_to_risk_manager
+                add_check_trade_to_risk_manager(risk_manager, self.typed_settings.risk)
+                
+                # Register risk manager
+                ServiceRegistry.register("risk_manager", risk_manager)
+                
+                logger.info("Risk manager initialized with typed settings")
+            else:
+                # Use legacy config if available
+                risk_config = self.config.get("risk_management", {})
+                if risk_config:
+                    # Import risk manager
+                    from trading_bot.risk.risk_manager import RiskManager
+                    
+                    # Create risk manager with legacy config
+                    risk_manager = RiskManager(config=risk_config)
+                    
+                    # Import and apply risk check capability
+                    from trading_bot.risk.risk_check import add_check_trade_to_risk_manager
+                    add_check_trade_to_risk_manager(risk_manager)
+                    
+                    # Register risk manager
+                    ServiceRegistry.register("risk_manager", risk_manager)
+                    
+                    logger.info("Risk manager initialized with legacy config")
+                else:
+                    logger.warning("No risk management configuration found - running without risk controls")
+        except Exception as e:
+            logger.error(f"Error initializing risk manager: {e}")
+            # Don't re-raise, we can operate without risk management but with limited safety load and register the risk manager
         logger.info("Risk manager would be initialized here")
     
     def _initialize_order_manager(self) -> None:
         """Initialize order manager based on configuration."""
-        # This would load and register the order manager
+        try:
+            # Check if we have typed settings for broker/order management
+            if TYPED_SETTINGS_AVAILABLE and self.typed_settings and hasattr(self.typed_settings, 'broker'):
+                # Get broker settings
+                broker_settings = self.typed_settings.broker
+                
+                # Initialize Tradier client with typed settings
+                from trading_bot.brokers.tradier_client import TradierClient
+                tradier_client = TradierClient(
+                    api_key=broker_settings.api_key,
+                    account_id=broker_settings.account_id,
+                    sandbox=broker_settings.sandbox_mode
+                )
+                
+                # Initialize trade executor with typed settings and risk manager
+                from trading_bot.brokers.trade_executor import TradeExecutor
+                risk_manager = ServiceRegistry.get("risk_manager", None)
+                
+                # Create trade executor
+                trade_executor = TradeExecutor(
+                    tradier_client=tradier_client,
+                    risk_manager=risk_manager,
+                    settings=broker_settings,
+                    config_path=self.config_path
+                )
+                
+                # Register order manager
+                ServiceRegistry.register("order_manager", trade_executor)
+                
+                logger.info("Order manager initialized with typed settings")
+            else:
+                # Use legacy config
+                broker_config = self.config.get("broker", {})
+                if broker_config:
+                    # Initialize Tradier client with legacy config
+                    from trading_bot.brokers.tradier_client import TradierClient
+                    tradier_client = TradierClient(
+                        api_key=broker_config.get("api_key"),
+                        account_id=broker_config.get("account_id"),
+                        sandbox=broker_config.get("sandbox_mode", True)
+                    )
+                    
+                    # Initialize trade executor with legacy config and risk manager
+                    from trading_bot.brokers.trade_executor import TradeExecutor
+                    risk_manager = ServiceRegistry.get("risk_manager", None)
+                    
+                    # Create trade executor
+                    trade_executor = TradeExecutor(
+                        tradier_client=tradier_client,
+                        risk_manager=risk_manager,
+                        max_position_pct=broker_config.get("max_position_pct", 0.05),
+                        max_risk_pct=broker_config.get("max_risk_pct", 0.01),
+                        order_type=broker_config.get("default_order_type", "market"),
+                        order_duration=broker_config.get("default_order_duration", "day")
+                    )
+                    
+                    # Register order manager
+                    ServiceRegistry.register("order_manager", trade_executor)
+                    
+                    logger.info("Order manager initialized with legacy config")
+                else:
+                    logger.warning("No broker configuration found - trading execution disabled")
+        except Exception as e:
+            logger.error(f"Error initializing order manager: {e}")
+            # Don't re-raise, we can still run in analysis-only mode load and register the order manager
         logger.info("Order manager would be initialized here")
     
     def start(self) -> None:
@@ -304,14 +514,45 @@ class MainOrchestrator:
             
             logger.info(f"Generated {len(signals)} signals for strategy: {strategy_name}")
             
-            # 3. Validate signals with risk manager (to be implemented)
-            # approved_signals = self._validate_signals(signals)
-            approved_signals = signals  # Temporary, until risk manager is implemented
+            # 3. Validate signals with risk manager
+            risk_manager = ServiceRegistry.get("risk_manager", None)
             
-            # 4. Execute approved signals (to be implemented)
+            if risk_manager:
+                approved_signals = []
+                for signal in signals:
+                    # Convert signal to order format for risk check
+                    order = {
+                        "symbol": signal.get("symbol"),
+                        "side": signal.get("action"),  # 'buy' or 'sell'
+                        "quantity": signal.get("quantity", 0),
+                        "price": signal.get("price", 0),
+                        "stop_price": signal.get("stop_price"),
+                        "dollar_amount": signal.get("estimated_value", 0),
+                        "strategy": strategy_name
+                    }
+                    
+                    # Perform risk check
+                    if hasattr(risk_manager, 'check_trade'):
+                        result = risk_manager.check_trade(order)
+                        if result.get("approved", False):
+                            approved_signals.append(signal)
+                            if result.get("warnings"):
+                                logger.warning(f"Risk warnings for {signal.get('symbol')}: {', '.join(result.get('warnings', []))}")
+                        else:
+                            logger.warning(f"Signal rejected by risk manager: {result.get('reason')}")
+                    else:
+                        # Risk manager doesn't have check_trade method
+                        approved_signals.append(signal)
+                        logger.warning(f"Risk manager doesn't have check_trade method, signal approved without risk check")
+            else:
+                # No risk manager available
+                approved_signals = signals
+                logger.warning("No risk manager available, all signals approved without risk check")
+            
+            # 4. Execute approved signals
             if approved_signals:
-                logger.info(f"Would execute {len(approved_signals)} signals for strategy: {strategy_name}")
-                # self._execute_signals(approved_signals)
+                logger.info(f"Executing {len(approved_signals)} signals for strategy: {strategy_name}")
+                self._execute_signals(strategy_name, approved_signals)
             else:
                 logger.info(f"No approved signals for strategy: {strategy_name}")
         
@@ -363,6 +604,69 @@ class MainOrchestrator:
         except Exception as e:
             logger.error(f"Error fetching market data for strategy '{strategy_name}': {e}")
             return {}
+
+    def _execute_signals(self, strategy_name: str, signals: List[Dict[str, Any]]) -> None:
+        """
+        Execute approved trading signals using the order manager.
+        
+        Args:
+            strategy_name: Name of the strategy that generated the signals
+            signals: List of approved trading signals to execute
+        """
+        try:
+            # Get the order manager from service registry
+            order_manager = ServiceRegistry.get("order_manager", None)
+            
+            if not order_manager:
+                logger.warning("No order manager available, cannot execute signals")
+                return
+            
+            for signal in signals:
+                try:
+                    symbol = signal.get("symbol")
+                    action = signal.get("action")  # 'buy' or 'sell'
+                    price = signal.get("price")   # Can be None for market orders
+                    stop_price = signal.get("stop_price")
+                    target_price = signal.get("target_price")
+                    quantity = signal.get("quantity")
+                    risk_pct = signal.get("risk_pct")
+                    
+                    # Add metadata to the trade
+                    metadata = {
+                        "strategy": strategy_name,
+                        "signal_time": datetime.now().isoformat(),
+                        "confidence": signal.get("confidence", 0),
+                        "signal_id": signal.get("id", str(uuid.uuid4()))
+                    }
+                    
+                    # Execute the trade
+                    logger.info(f"Executing {action} signal for {symbol} from {strategy_name}")
+                    
+                    result = order_manager.execute_trade(
+                        symbol=symbol,
+                        side=action,
+                        entry_price=price,
+                        stop_price=stop_price,
+                        target_price=target_price,
+                        shares=quantity,
+                        risk_pct=risk_pct,
+                        strategy_name=strategy_name,
+                        metadata=metadata
+                    )
+                    
+                    if result.get("status") == "rejected":
+                        logger.warning(f"Order rejected: {result.get('message')}")
+                    elif result.get("status") == "error":
+                        logger.error(f"Order error: {result.get('message')}")
+                    else:
+                        logger.info(f"Order placed successfully: {result.get('order_id')}")
+                        
+                except Exception as signal_error:
+                    logger.error(f"Error executing signal for {signal.get('symbol', 'unknown')}: {signal_error}")
+        
+        except Exception as e:
+            logger.error(f"Error executing signals for strategy {strategy_name}: {e}")
+
 
 def setup_signal_handlers(orchestrator: MainOrchestrator) -> None:
     """Set up signal handlers for graceful shutdown."""

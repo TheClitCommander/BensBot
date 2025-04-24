@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 # Import our components
 from trading_bot.market_intelligence_controller import get_market_intelligence_controller
+from trading_bot.triggers.notification_connector import get_notification_connector
 
 class TimerTrigger:
     """
@@ -74,6 +75,11 @@ class TimerTrigger:
             "weekend_updates": False
         })
         
+        # Initialize notification connector
+        telegram_token = self._config.get("telegram", {}).get("token")
+        telegram_chat_id = self._config.get("telegram", {}).get("chat_id")
+        self.notification_connector = get_notification_connector(telegram_token, telegram_chat_id)
+        
         self.logger.info("TimerTrigger initialized")
     
     def start(self):
@@ -120,19 +126,51 @@ class TimerTrigger:
                             
                             if update_type == "market_data":
                                 # Update market data only
-                                self.controller.market_context.update_market_data()
+                                result = self.controller.market_context.update_market_data()
+                                
+                                # Send notification about the update
+                                self.notification_connector.notify_market_update(
+                                    "market_data",
+                                    {
+                                        "timestamp": datetime.datetime.now().isoformat(),
+                                        "indices": result.get("indices", {}),
+                                        "sentiment": result.get("sentiment", "")
+                                    }
+                                )
                                 self.last_updates[update_type] = current_time
                                 
                             elif update_type == "symbol_data":
-                                # Update symbol data for current symbols
-                                context = self.controller.market_context.get_market_context()
-                                symbols = list(context.get("symbols", {}).keys())
-                                self.controller.market_context.update_symbol_data(symbols)
+                                # Update symbol data only
+                                symbols = self.controller.market_context.get_top_symbols(20)
+                                result = self.controller.market_context.update_symbol_data(symbols)
+                                
+                                # Send notification about the update
+                                self.notification_connector.notify_market_update(
+                                    "symbol_data",
+                                    {
+                                        "timestamp": datetime.datetime.now().isoformat(),
+                                        "symbols": symbols,
+                                        "noteworthy": result.get("noteworthy", [])
+                                    }
+                                )
                                 self.last_updates[update_type] = current_time
                                 
                             elif update_type == "full_update":
-                                # Full update
-                                self.controller.update(force=True)
+                                # Run full update
+                                update_result = self.controller.update()
+                                
+                                # Get market context for notification
+                                context = self.controller.market_context.get_market_context()
+                                
+                                # Send notification about the full update
+                                self.notification_connector.notify_market_update(
+                                    "full_update",
+                                    {
+                                        "timestamp": datetime.datetime.now().isoformat(),
+                                        "market_regime": context.get("market", {}).get("regime", "unknown"),
+                                        "top_strategies": context.get("strategies", {}).get("ranked", [])[:5]
+                                    }
+                                )
                                 # Update all timestamps since full update covers everything
                                 for key in self.last_updates.keys():
                                     self.last_updates[key] = current_time
@@ -209,6 +247,11 @@ class EventTrigger:
         # Controller instance
         self.controller = get_market_intelligence_controller()
         
+        # Initialize notification connector
+        telegram_token = self._config.get("telegram", {}).get("token")
+        telegram_chat_id = self._config.get("telegram", {}).get("chat_id")
+        self.notification_connector = get_notification_connector(telegram_token, telegram_chat_id)
+        
         # Thread for event monitoring
         self._monitor_thread = None
         self._running = False
@@ -284,12 +327,29 @@ class EventTrigger:
                 for event in events:
                     event_type = event.get("type")
                     
-                    if event_type in self.callbacks:
-                        for callback in self.callbacks[event_type]:
-                            try:
-                                callback(event)
-                            except Exception as e:
-                                self.logger.error(f"Error in event callback: {str(e)}")
+                    # Call registered callbacks
+                    for callback in self.callbacks.get(event_type, []):
+                        try:
+                            callback(event)
+                        except Exception as e:
+                            self.logger.error(f"Error in callback for {event_type}: {str(e)}")
+                    
+                    # Send notification for this event
+                    try:
+                        notification_result = self.notification_connector.notify_market_event(
+                            event_type,
+                            {
+                                "description": event.get("description", f"{event_type} detected"),
+                                "timestamp": datetime.datetime.now().isoformat(),
+                                "severity": event.get("severity", "MEDIUM"),
+                                "impact": event.get("impact", ""),
+                                "recommendation": event.get("recommendation", ""),
+                                "data": event.get("data", {})
+                            }
+                        )
+                        self.logger.info(f"Notification sent for {event_type}: {notification_result}")
+                    except Exception as e:
+                        self.logger.error(f"Error sending notification for {event_type}: {str(e)}")
                     
                     # Also trigger update based on event type
                     if event_type == "vix_spike":
@@ -418,7 +478,12 @@ class WebhookTrigger:
         # Controller instance
         self.controller = get_market_intelligence_controller()
         
-        # Rate limiting
+        # Initialize notification connector
+        telegram_token = self._config.get("telegram", {}).get("token")
+        telegram_chat_id = self._config.get("telegram", {}).get("chat_id")
+        self.notification_connector = get_notification_connector(telegram_token, telegram_chat_id)
+        
+        # Request history for rate limiting
         self.request_history = []
         
         self.logger.info("WebhookTrigger initialized")
@@ -463,8 +528,22 @@ class WebhookTrigger:
             
             elif action == "full_update":
                 force = request_data.get("force", False)
-                self.controller.update(force=force)
-                return {"status": "success", "message": "Full update triggered"}
+                update_result = self.controller.update(force=force)
+                
+                # Send notification about the manual update
+                self.notification_connector.notify_market_update(
+                    "webhook_update",
+                    {
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "source": request_data.get("source", "webhook"),
+                        "result": {
+                            "status": update_result.get("status", "unknown"),
+                            "timestamp": update_result.get("timestamp", "")
+                        }
+                    }
+                )
+                
+                return {"status": "success", "message": "Update triggered", "result": update_result}
             
             elif action == "backtest_pair":
                 symbol = request_data.get("symbol")
@@ -479,6 +558,21 @@ class WebhookTrigger:
                 
                 # Run backtest
                 result = executor.backtest_pair(symbol, strategy)
+                
+                # If the backtest was significant, send a notification
+                if result.get("performance", {}).get("win_rate", 0) > 0.6 or \
+                   abs(result.get("performance", {}).get("pnl_percent", 0)) > 5:
+                    self.notification_connector.notify_market_update(
+                        "backtest_result",
+                        {
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "symbol": symbol,
+                            "strategy": strategy,
+                            "performance": result.get("performance", {}),
+                            "recommendation": "Consider implementing this strategy based on strong backtest results"
+                            if result.get("performance", {}).get("pnl_percent", 0) > 5 else ""
+                        }
+                    )
                 
                 return {"status": "success", "message": "Backtest triggered", "result": result}
             

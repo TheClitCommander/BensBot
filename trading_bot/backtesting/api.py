@@ -7,6 +7,11 @@ users to interact with the ML-powered backtesting features.
 """
 
 import logging
+import os
+from typing import Dict, Any, Optional, Union
+
+# Import typed settings
+from trading_bot.config.typed_settings import APISettings, TradingBotSettings, BacktestSettings, load_config
 
 # Try to import Flask, but handle the case where it's not installed
 try:
@@ -43,6 +48,19 @@ from trading_bot.backtesting.autonomous_backtester import AutonomousBacktester, 
 from trading_bot.backtesting.ml_optimizer import MLStrategyOptimizer
 
 logger = logging.getLogger(__name__)
+
+# Load typed settings if available
+api_settings = None
+backtest_settings = None
+try:
+    config = load_config()
+    api_settings = config.api
+    backtest_settings = config.backtest
+    logger.info("Loaded API and backtest settings from typed config")
+except Exception as e:
+    logger.warning(f"Could not load typed settings: {str(e)}. Using defaults.")
+    api_settings = APISettings()
+    backtest_settings = BacktestSettings()
 
 # Global instances of the backtesting components
 data_layer = None
@@ -93,6 +111,18 @@ def register_ml_backtest_endpoints(app):
     Args:
         app: Flask application
     """
+    # Configure app with typed settings if Flask is available
+    if FLASK_AVAILABLE and hasattr(app, 'config'):
+        if api_settings:
+            app.config['RATE_LIMIT_REQUESTS'] = api_settings.rate_limit_requests
+            app.config['RATE_LIMIT_PERIOD_SECONDS'] = api_settings.rate_limit_period_seconds
+            app.config['REQUIRE_AUTH'] = api_settings.require_authentication
+        
+        if backtest_settings:
+            app.config['DEFAULT_SYMBOLS'] = backtest_settings.default_symbols
+            app.config['DEFAULT_START_DATE'] = backtest_settings.default_start_date
+            app.config['DEFAULT_END_DATE'] = backtest_settings.default_end_date
+            app.config['INITIAL_CAPITAL'] = backtest_settings.initial_capital
     @app.route('/api/autonomous-backtest', methods=['POST'])
     def run_autonomous_backtest():
         """Run a full autonomous backtesting cycle"""
@@ -105,11 +135,14 @@ def register_ml_backtest_endpoints(app):
         try:
             params = request.json or {}
             
-            # Extract parameters
+            # Extract parameters with fallbacks to typed settings
             tickers = params.get('tickers')
             if params.get('ticker'):
                 # Support single ticker parameter
                 tickers = [params.get('ticker')]
+            elif not tickers and backtest_settings and backtest_settings.default_symbols:
+                # Fall back to default symbols from typed settings
+                tickers = backtest_settings.default_symbols
                 
             timeframes = params.get('timeframes')
             if params.get('timeframe') and params.get('timeframe') != 'all':

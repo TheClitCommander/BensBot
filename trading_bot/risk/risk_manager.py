@@ -14,7 +14,18 @@ from enum import Enum
 import json
 import os
 
-from trading_bot.common.config_utils import setup_directories, load_config, save_state, load_state
+# Import traditional config utils for backward compatibility
+from trading_bot.common.config_utils import setup_directories, save_state, load_state
+
+# Import the new typed settings system
+try:
+    from trading_bot.config.typed_settings import load_config as typed_load_config, RiskSettings
+    from trading_bot.config.migration_utils import get_config_from_legacy_path, migrate_config
+    TYPED_SETTINGS_AVAILABLE = True
+except ImportError:
+    TYPED_SETTINGS_AVAILABLE = False
+    # Fall back to legacy config if typed settings not available
+    from trading_bot.common.config_utils import load_config
 
 # Setup logging
 logger = logging.getLogger("RiskManager")
@@ -115,57 +126,80 @@ class RiskManager:
     the system's ability to continue operating under various market conditions.
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, config_path: Optional[str] = None, settings: Optional[RiskSettings] = None):
         """
         Initialize the risk management system with configuration parameters.
         
         Creates a new RiskManager instance with default or custom risk parameters.
         Sets up the initial portfolio state, risk thresholds, and tracking mechanisms
-        for ongoing risk assessment and management.
+        for positions, drawdowns, and portfolio risk metrics.
         
-        Parameters:
-            config (Optional[Dict[str, Any]]): Custom configuration dictionary
-                containing risk parameters. If None, loads from disk or uses defaults.
-                
-        Configuration parameters:
-            - max_drawdown_pct: Maximum allowable overall drawdown (default: 0.15 or 15%)
-            - max_daily_drawdown_pct: Maximum allowable daily drawdown (default: 0.05 or 5%)
-            - default_risk_per_trade: Default risk percentage per trade (default: 0.01 or 1%)
-            - max_risk_per_trade: Maximum allowable risk per trade (default: 0.05 or 5%)
-            - max_portfolio_risk: Maximum portfolio exposure (default: 0.30 or 30%)
-            - stop_loss_type: Default stop-loss methodology (default: "VOLATILITY")
-            - fixed_stop_loss_pct: Percentage for fixed stops (default: 0.02 or 2%)
-            - atr_multiplier: Multiplier for ATR-based stops (default: 3.0)
-            - trailing_stop_activation_pct: Profit threshold to activate trailing stops (default: 0.01 or 1%)
-            - trailing_stop_distance_pct: Distance for trailing stops (default: 0.02 or 2%)
-            - initial_portfolio_value: Starting portfolio value (default: 100,000)
-            - max_positions: Maximum number of concurrent positions (default: 10)
-            - var_confidence_level: Confidence level for VaR calculations (default: 0.95 or 95%)
-            - var_time_horizon: Time horizon in days for VaR (default: 1)
+        Args:
+            config: Optional configuration dictionary with risk parameters
+            config_path: Optional path to configuration file
+            settings: Optional RiskSettings object from typed_settings system
             
-        Side effects:
-            - Creates paths for configuration and state storage
-            - Initializes portfolio tracking metrics
-            - Sets up position tracking structures
-            - Loads previous state if available
-            
+        Configuration parameters include:
+            - max_position_pct: Maximum position size as percentage of portfolio
+            - max_risk_pct: Maximum risk per trade as percentage of portfolio
+            - max_portfolio_risk: Maximum total portfolio risk percentage
+            - max_correlated_positions: Maximum number of correlated positions
+            - default_risk_per_trade: Default risk percentage per trade
+            - daily_stop_loss_pct: Daily stop-loss percentage
+            - max_daily_drawdown_pct: Maximum daily drawdown percentage
+            - max_open_trades: Maximum number of open trades
+            - correlation_threshold: Correlation threshold for related positions
+            - stop_loss_type: Default stop-loss methodology (fixed, volatility, etc.)
+            - default_fixed_stop_pct: Default fixed stop-loss percentage
+            - default_atr_multiple: Default ATR multiple for volatility stops
+            - trailing_stop_activation_pct: Percentage profit to activate trailing stops
+            - trailing_stop_distance_pct: Trailing stop distance as percentage
+            - portfolio_var_conf_level: Portfolio VaR confidence level
+            - position_var_conf_level: Position VaR confidence level
+            - var_days: VaR time horizon in days
+        
         Notes:
-            - Configuration settings can significantly impact trading behavior and risk profile
-            - More conservative settings (lower percentages) favor capital preservation
+            - Conservative settings prioritize capital preservation
             - More aggressive settings favor potential returns at higher risk
             - Parameters should be tuned based on strategy characteristics and risk tolerance
         """
-        # Setup paths
-        self.paths = setup_directories(
-            data_dir=config.get("data_dir") if config else None,
-            component_name="risk_manager"
-        )
+        # Setup paths for state persistence
+        self.paths = setup_directories()
         
         # Load configuration
-        self.config = load_config(
-            self.paths.get("config_path"), 
-            default_config_factory=self._get_default_config
-        ) if not config else config
+        self.config = self._get_default_config()
+        
+        # Load config in the following priority order:
+        # 1. RiskSettings object (from typed_settings)
+        # 2. Custom config_path (file)
+        # 3. Provided config dictionary
+        # 4. Default config
+        
+        if settings and TYPED_SETTINGS_AVAILABLE:
+            # Use typed settings if provided
+            self._load_from_typed_settings(settings)
+        elif config_path:
+            # Try to load from path using typed settings if available
+            if TYPED_SETTINGS_AVAILABLE:
+                try:
+                    # Get full config and extract risk settings
+                    full_config = get_config_from_legacy_path(config_path)
+                    self._load_from_typed_settings(full_config.risk)
+                except Exception as e:
+                    logger.warning(f"Could not load typed settings: {e}")
+                    logger.warning("Falling back to legacy config loading")
+                    # Fall back to legacy loading
+                    loaded_config = load_config(config_path)
+                    if loaded_config:
+                        self.config.update(loaded_config)
+            else:
+                # Use traditional config loading
+                loaded_config = load_config(config_path)
+                if loaded_config:
+                    self.config.update(loaded_config)
+        elif config:
+            # Use provided config dict
+            self.config.update(config)
         
         # Maximum drawdown settings
         self.max_drawdown_pct = self.config.get("max_drawdown_pct", 0.15)  # 15% max drawdown
@@ -214,21 +248,51 @@ class RiskManager:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration."""
         return {
-            "max_drawdown_pct": 0.15,
-            "max_daily_drawdown_pct": 0.05,
-            "default_risk_per_trade": 0.01,
-            "max_risk_per_trade": 0.05,
-            "max_portfolio_risk": 0.30,
-            "stop_loss_type": "VOLATILITY",
-            "fixed_stop_loss_pct": 0.02,
-            "atr_multiplier": 3.0,
-            "trailing_stop_activation_pct": 0.01,
-            "trailing_stop_distance_pct": 0.02,
-            "initial_portfolio_value": 100000.0,
-            "max_positions": 10,
-            "var_confidence_level": 0.95,
-            "var_time_horizon": 1
+            "max_position_pct": 0.05,           # Max 5% of portfolio per position
+            "max_risk_pct": 0.01,              # Risk 1% of portfolio per trade
+            "max_portfolio_risk": 0.20,        # Max 20% of portfolio at risk
+            "max_correlated_positions": 3,     # Max correlated positions
+            "max_sector_allocation": 0.30,     # Max 30% in one sector
+            "default_risk_per_trade": 0.01,    # Default 1% risk per trade
+            "daily_stop_loss_pct": 0.03,       # 3% daily stop loss
+            "max_daily_drawdown_pct": 0.05,    # 5% max daily drawdown
+            "max_open_trades": 10,             # Max simultaneous open trades
+            "correlation_threshold": 0.7,       # Correlation threshold
+            "stop_loss_type": "volatility",    # Default stop-loss method
+            "default_fixed_stop_pct": 0.05,    # 5% fixed stop
+            "default_atr_multiple": 2.0,       # 2x ATR volatility stop
+            "trailing_stop_activation_pct": 0.02, # 2% profit to activate
+            "trailing_stop_distance_pct": 0.02,   # 2% trailing distance
+            "portfolio_var_conf_level": 0.95,   # 95% VaR confidence
+            "position_var_conf_level": 0.95,    # 95% VaR confidence
+            "var_days": 1,                     # 1-day VaR horizon
         }
+        
+    def _load_from_typed_settings(self, settings: RiskSettings) -> None:
+        """Load configuration from a RiskSettings object.
+        
+        Args:
+            settings: RiskSettings object from the typed settings system
+        """
+        try:
+            # Convert RiskSettings to our internal config format
+            self.config.update({
+                "max_position_pct": settings.max_position_pct,
+                "max_risk_pct": settings.max_risk_pct,
+                "max_portfolio_risk": settings.max_portfolio_risk,
+                "max_correlated_positions": settings.max_correlated_positions,
+                "max_sector_allocation": settings.max_sector_allocation,
+                "max_open_trades": settings.max_open_trades,
+                "correlation_threshold": settings.correlation_threshold,
+                "enable_portfolio_stop_loss": settings.enable_portfolio_stop_loss,
+                "portfolio_stop_loss_pct": settings.portfolio_stop_loss_pct,
+                "enable_position_stop_loss": settings.enable_position_stop_loss
+            })
+            
+            logger.info("Loaded risk configuration from typed settings")
+        except Exception as e:
+            logger.error(f"Error loading from typed settings: {e}")
+            logger.error("Using existing configuration")
     
     def calculate_position_size(self, symbol: str, entry_price: float, 
                               stop_loss_price: float, market_data: Dict[str, Any]) -> int:
@@ -1211,8 +1275,21 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Create risk manager
-    risk_manager = RiskManager()
+    # Try to use typed settings if available
+    if TYPED_SETTINGS_AVAILABLE:
+        try:
+            # Load configuration from the canonical config file
+            settings = typed_load_config("/Users/bendickinson/Desktop/Trading/trading_bot/config/config.yaml")
+            # Create risk manager with typed settings
+            risk_manager = RiskManager(settings=settings.risk)
+            print("Using typed settings configuration")
+        except Exception as e:
+            print(f"Could not load typed settings: {e}")
+            print("Falling back to default configuration")
+            risk_manager = RiskManager()
+    else:
+        # Create risk manager with default configuration
+        risk_manager = RiskManager()
     
     # Create sample market data
     market_data = {

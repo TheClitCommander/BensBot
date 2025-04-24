@@ -8,7 +8,7 @@ providing UI and API endpoints for monitoring and control.
 import os
 import logging
 import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -23,8 +23,21 @@ from pydantic import BaseModel
 from trading_bot.auth.api import router as auth_router
 from trading_bot.auth.service import AuthService
 
+# Import typed settings
+from trading_bot.config.typed_settings import APISettings, TradingBotSettings, load_config
+
 # Initialize logging
 logger = logging.getLogger("TradingBotAPI")
+
+# Load typed settings if available
+api_settings = None
+try:
+    config = load_config()
+    api_settings = config.api
+    logger.info("Loaded API settings from typed config")
+except Exception as e:
+    logger.warning(f"Could not load typed API settings: {str(e)}. Using defaults.")
+    api_settings = APISettings()
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -33,10 +46,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with settings from config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to your domain
+    allow_origins=api_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -268,5 +281,10 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Start the API server
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    # Start the API server with settings from config
+    uvicorn.run(
+        app, 
+        host=api_settings.host, 
+        port=api_settings.port,
+        debug=api_settings.debug
+    )

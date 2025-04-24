@@ -1,0 +1,74 @@
+name: Trading Bot CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov black isort flake8 mypy
+      
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are syntax errors or undefined names
+          flake8 trading_bot --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings
+          flake8 trading_bot --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+      
+      - name: Check formatting with black
+        run: |
+          black --check trading_bot
+      
+      - name: Check imports with isort
+        run: |
+          isort --check-only --profile black trading_bot
+      
+      - name: Run tests
+        run: |
+          pytest --cov=trading_bot tests/ --cov-report=xml --cov-fail-under=60
+      
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+      
+      - name: Run security scan with bandit
+        run: |
+          bandit -r trading_bot -ll
+      
+      - name: Check dependencies with safety
+        run: |
+          safety check

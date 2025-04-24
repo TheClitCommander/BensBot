@@ -6,6 +6,18 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
 
 from trading_bot.brokers.tradier_client import TradierClient, TradierAPIError
+# Import risk check functionality
+from trading_bot.risk.risk_check import check_trade, add_check_trade_to_risk_manager
+
+# Import typed settings if available
+try:
+    from trading_bot.config.typed_settings import (
+        load_config, BrokerSettings, RiskSettings, TradingBotSettings
+    )
+    from trading_bot.config.migration_utils import get_config_from_legacy_path
+    TYPED_SETTINGS_AVAILABLE = True
+except ImportError:
+    TYPED_SETTINGS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -18,25 +30,80 @@ class TradeExecutor:
     
     def __init__(self, 
                 tradier_client: TradierClient,
+                risk_manager=None,
                 max_position_pct: float = 0.05,
                 max_risk_pct: float = 0.01,
                 order_type: str = "market",
-                order_duration: str = "day"):
+                order_duration: str = "day",
+                settings: Optional[Union[BrokerSettings, TradingBotSettings]] = None,
+                config_path: Optional[str] = None):
         """
         Initialize the trade executor
         
         Args:
             tradier_client: Initialized Tradier client
+            risk_manager: Optional risk manager instance
             max_position_pct: Maximum position size as percentage of account equity
             max_risk_pct: Maximum risk per trade as percentage of account equity
             order_type: Default order type ('market', 'limit', 'stop', 'stop_limit')
             order_duration: Default order duration ('day', 'gtc')
+            settings: Optional typed settings (BrokerSettings or TradingBotSettings)
+            config_path: Optional path to configuration file
         """
         self.client = tradier_client
-        self.max_position_pct = max_position_pct
-        self.max_risk_pct = max_risk_pct
-        self.default_order_type = order_type
-        self.default_order_duration = order_duration
+        self.risk_manager = risk_manager
+        
+        # Store original parameters as fallbacks
+        self._max_position_pct = max_position_pct
+        self._max_risk_pct = max_risk_pct
+        self._default_order_type = order_type
+        self._default_order_duration = order_duration
+        
+        # Load settings from typing system if available
+        self.broker_settings = None
+        self.risk_settings = None
+        
+        if settings and TYPED_SETTINGS_AVAILABLE:
+            # Extract settings based on what was provided
+            if hasattr(settings, 'broker'):
+                # Full TradingBotSettings provided
+                self.broker_settings = settings.broker
+                self.risk_settings = settings.risk
+            elif hasattr(settings, 'api_key'):
+                # Just BrokerSettings provided
+                self.broker_settings = settings
+                
+                # Try to load full settings to get risk settings
+                if config_path and TYPED_SETTINGS_AVAILABLE:
+                    try:
+                        full_config = load_config(config_path)
+                        self.risk_settings = full_config.risk
+                    except Exception as e:
+                        logger.warning(f"Could not load risk settings from config: {e}")
+        elif config_path and TYPED_SETTINGS_AVAILABLE:
+            # Try to load from config path
+            try:
+                full_config = load_config(config_path)
+                self.broker_settings = full_config.broker
+                self.risk_settings = full_config.risk
+            except Exception as e:
+                logger.warning(f"Could not load typed settings from path: {e}")
+                
+        # Apply settings if available, otherwise use constructor parameters
+        if self.broker_settings:
+            self.max_position_pct = self.broker_settings.max_position_pct
+            self.default_order_type = self.broker_settings.default_order_type
+            self.default_order_duration = self.broker_settings.default_order_duration
+        else:
+            self.max_position_pct = max_position_pct
+            self.default_order_type = order_type
+            self.default_order_duration = order_duration
+            
+        # Apply risk settings
+        if self.risk_settings:
+            self.max_risk_pct = self.risk_settings.max_risk_pct
+        else:
+            self.max_risk_pct = max_risk_pct
         
         # Trade history
         self.trade_history = []
@@ -141,30 +208,17 @@ class TradeExecutor:
             # Cap at max position size
             shares = min(shares, max_shares)
         
-        # Calculate total position value
-        position_value = shares * entry_price
+        # Calculate dollar amount
+        dollar_amount = shares * entry_price
         
-        # Ensure position doesn't exceed max position size
-        if position_value > self.max_position_dollars:
-            shares = int(self.max_position_dollars / entry_price) if entry_price > 0 else 0
-            position_value = shares * entry_price
-        
-        # Ensure we have enough buying power
-        if position_value > self.buying_power:
-            logger.warning(f"Position size (${position_value:.2f}) exceeds buying power (${self.buying_power:.2f})")
-            shares = int(self.buying_power / entry_price) if entry_price > 0 else 0
-            position_value = shares * entry_price
-        
-        # Calculate actual risk
-        actual_risk_dollars = risk_dollars if stop_price else position_value * 0.01
-        actual_risk_pct = actual_risk_dollars / self.account_equity if self.account_equity > 0 else 0
+        logger.info(f"Position size calculated: {shares} shares (${dollar_amount:.2f})")
         
         return {
             "shares": shares,
-            "position_value": position_value,
-            "position_pct_of_account": position_value / self.account_equity if self.account_equity > 0 else 0,
-            "risk_dollars": actual_risk_dollars,
-            "risk_pct_of_account": actual_risk_pct,
+            "dollar_amount": dollar_amount,
+            "position_pct_of_account": dollar_amount / self.account_equity if self.account_equity > 0 else 0,
+            "risk_dollars": risk_dollars,
+            "risk_pct_of_account": risk_pct,
             "entry_price": entry_price,
             "stop_price": stop_price
         }
@@ -180,7 +234,8 @@ class TradeExecutor:
                      order_type: Optional[str] = None,
                      duration: Optional[str] = None,
                      strategy_name: Optional[str] = None,
-                     metadata: Optional[Dict] = None) -> Dict[str, Any]:
+                     metadata: Optional[Dict] = None,
+                     bypass_risk_check: bool = False) -> Dict[str, Any]:
         """
         Execute a trade
         
@@ -229,6 +284,48 @@ class TradeExecutor:
             order_type = order_type or self.default_order_type
             duration = duration or self.default_order_duration
             
+            # Create order object for risk check
+            order_details = {
+                "symbol": symbol,
+                "side": side,
+                "quantity": shares,
+                "price": entry_price,
+                "stop_price": stop_price,
+                "order_type": order_type,
+                "dollar_amount": shares * entry_price,
+                "strategy": strategy_name,
+                "metadata": metadata or {}
+            }
+            
+            # Check if this trade passes risk management rules if not explicitly bypassed
+            if self.risk_manager and not bypass_risk_check:
+                # Make sure the risk manager has the check_trade method
+                if not hasattr(self.risk_manager, 'check_trade'):
+                    add_check_trade_to_risk_manager(self.risk_manager, self.risk_settings)
+                
+                # Perform the risk check with typed settings if available
+                risk_check_result = self.risk_manager.check_trade(order_details)
+                
+                if not risk_check_result["approved"]:
+                    logger.warning(f"Trade rejected by risk manager: {risk_check_result['reason']}")
+                    return {
+                        "status": "rejected",
+                        "reason": risk_check_result["reason"],
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": shares,
+                        "price": entry_price,
+                        "order_type": order_type,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                
+                # Log any warnings from risk check
+                if risk_check_result.get("warnings"):
+                    for warning in risk_check_result["warnings"]:
+                        logger.warning(f"Risk warning for {symbol} trade: {warning}")
+                        
+                logger.info(f"Trade approved by risk manager: {symbol} {side} {shares} shares")
+            
             # Generate unique trade ID
             trade_id = str(uuid.uuid4())
             
@@ -254,7 +351,8 @@ class TradeExecutor:
             }
             
             # Place the order
-            logger.info(f"Placing {side} order for {shares} shares of {symbol} at ${entry_price:.2f}")
+            price_display = f"${entry_price:.2f}" if entry_price is not None else "market price"
+            logger.info(f"Placing {side} order for {shares} shares of {symbol} at {price_display}")
             
             order_result = self.client.place_equity_order(
                 symbol=symbol,
