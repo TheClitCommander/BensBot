@@ -13,39 +13,72 @@ import os
 import time
 import traceback
 import uuid
+import logging
 
-# Try to import plotting libraries
+# Constants for feature availability
+AI_CHAT_AVAILABLE = True  # Set to True to enable the BenBot AI chat assistant
+CHART_LIBRARY_AVAILABLE = True  # Set to True to enable Plotly charts
+PORTFOLIO_DATA_AVAILABLE = True  # Set to True to enable real portfolio data
+
+# Import UI components
+from ui.ai_chat import render_ai_chat_widget
+
+# External components
 try:
     import plotly.express as px
     import plotly.graph_objects as go
-    import plotly.subplots as sp
+    from plotly.subplots import make_subplots
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
+    CHART_LIBRARY_AVAILABLE = False
+    st.warning("Plotly not installed. Some visualizations may not be available.")
 
-# Import AI chat widget
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("dashboard")
+
+# Import BenBot Assistant if available
 try:
-    from ui.ai_chat import render_ai_chat_widget
-    AI_CHAT_AVAILABLE = True
-except ImportError:
-    AI_CHAT_AVAILABLE = False
+    from trading_bot.assistant.benbot_assistant import BenBotAssistant
+    BENBOT_AVAILABLE = True
+    logger.info("BenBot Assistant module found and imported successfully")
+except ImportError as e:
+    BENBOT_AVAILABLE = False
+    logger.warning(f"BenBot Assistant module not found, will use fallback responses: {e}")
 
-# Import required components for autonomous trading
-from trading_bot.adapters.news.news_service import NewsService
-
-# Try to import autonomous components
+# Try to import the real trading bot components
 try:
-    from config import API_KEYS
-    from trading_bot.core.autonomous_orchestrator import AutonomousOrchestrator
-    from trading_bot.core.data_hub import CentralDataHub
-    from trading_bot.core.alert_manager import AlertManager
-    USING_REAL_API = True
-    USING_FULL_STACK = True
-except Exception as e:
-    print(f"Could not load complete trading stack: {e}")
-    API_KEYS = {}
-    USING_REAL_API = False
-    USING_FULL_STACK = False
+    # Import the Orchestrator for autonomous trading
+    from trading_bot.core.main_orchestrator import MainOrchestrator
+    
+    # Import the data manager for market data
+    from trading_bot.data.data_manager import DataManager
+    
+    # Import the BacktestManager for backtest operations
+    from trading_bot.backtesting.backtest_manager import BacktestManager
+    
+    # Import the strategy factory
+    from trading_bot.strategies.strategy_factory import StrategyFactory
+    
+    # Import the portfolio manager
+    from trading_bot.portfolio.portfolio_manager import PortfolioManager
+    
+    # Import news service
+    from trading_bot.services.news_service import NewsService
+    
+    # Import alert manager
+    from trading_bot.alerts.alert_manager import AlertManager
+    
+    # Set flag for real components
+    REAL_COMPONENTS_AVAILABLE = True
+    logger.info("Successfully imported trading_bot components")
+    
+except ImportError as e:
+    # Log the error but continue with mock components
+    logger.warning(f"Error importing trading_bot components: {e}")
+    logger.warning("Using mock data for dashboard. Some features will be limited.")
+    REAL_COMPONENTS_AVAILABLE = False
 
 # Set page config - professional dark theme
 st.set_page_config(
@@ -64,6 +97,13 @@ if "active_tab" not in st.session_state:
 
 if "last_pipeline_run" not in st.session_state:
     st.session_state.last_pipeline_run = None
+    
+# Initialize Benbot chat state if not present
+if "chat_shown" not in st.session_state:
+    st.session_state.chat_shown = False
+    
+if "benbot_initialized" not in st.session_state:
+    st.session_state.benbot_initialized = False
 
 # -------------------- CUSTOM CSS --------------------
 st.markdown("""
@@ -202,7 +242,7 @@ try:
     news_service = NewsService(API_KEYS)
     
     # Initialize other components if available
-    if USING_FULL_STACK:
+    if REAL_COMPONENTS_AVAILABLE:
         data_hub = CentralDataHub(API_KEYS)
         alert_manager = AlertManager()
         orchestrator = AutonomousOrchestrator(data_hub=data_hub)
@@ -220,6 +260,85 @@ except Exception as e:
     data_hub = None
     alert_manager = None
     orchestrator = None
+
+# Initialize component instances if real components are available
+try:
+    if REAL_COMPONENTS_AVAILABLE:
+        # Create instances of real components
+        orchestrator = MainOrchestrator()
+        data_manager = DataManager()
+        backtest_manager = BacktestManager()
+        strategy_factory = StrategyFactory()
+        portfolio_manager = PortfolioManager()
+        news_service = NewsService()
+        alert_manager = AlertManager()
+        
+        logger.info("Successfully initialized trading_bot components")
+    else:
+        # Use mock instances
+        orchestrator = None
+        data_manager = None
+        backtest_manager = None
+        strategy_factory = None
+        portfolio_manager = None
+        news_service = None
+        alert_manager = None
+        
+        logger.info("Using mock components for dashboard")
+except Exception as e:
+    # Log the error but continue with None components
+    logger.error(f"Error initializing trading_bot components: {e}")
+    orchestrator = None
+    data_manager = None
+    backtest_manager = None
+    strategy_factory = None
+    portfolio_manager = None
+    news_service = None
+    alert_manager = None
+
+# Initialize BenBot Assistant with direct orchestrator integration
+benbot_assistant = None
+if BENBOT_AVAILABLE:
+    try:
+        # Create a dictionary with all available trading components for the assistant to use
+        trading_context = {
+            "orchestrator": orchestrator,
+            "data_manager": data_manager,
+            "backtest_manager": backtest_manager,
+            "strategy_factory": strategy_factory,
+            "portfolio_manager": portfolio_manager,
+            "news_service": news_service,
+            "alert_manager": alert_manager
+        }
+        
+        # Log availability of components
+        logger.info(f"Orchestrator available: {orchestrator is not None}")
+        logger.info(f"Data Manager available: {data_manager is not None}")
+        
+        # Initialize the assistant with trading context and paths
+        benbot_assistant = BenBotAssistant(
+            data_manager=data_manager,
+            dashboard_interface=None,
+            data_dir="data",
+            results_dir="results",
+            models_dir="models"
+        )
+        
+        # Store trading context in the assistant for direct access to trading components
+        benbot_assistant.trading_context = trading_context
+        
+        logger.info("BenBot Assistant initialized and connected to trading orchestrator")
+        
+        # Store in session state
+        st.session_state.benbot_assistant = benbot_assistant
+        st.session_state.benbot_initialized = True
+        
+        # Enable the chat by default since we have a working assistant
+        st.session_state.chat_shown = True
+    except Exception as e:
+        logger.error(f"Failed to initialize BenBot Assistant: {str(e)}\n{traceback.format_exc()}")
+        BENBOT_AVAILABLE = False
+        st.session_state.benbot_initialized = False
 
 # -------------------- AUTONOMOUS TAB COMPONENTS --------------------
 
@@ -2154,8 +2273,25 @@ st.markdown("""
 # In the MAIN area, not dependent on tab rendering, show the chat if enabled
 if AI_CHAT_AVAILABLE and st.session_state.get("chat_shown", False):
     try:
+        # Use the already initialized BenBot assistant or get from session state
+        assistant = benbot_assistant
+        if assistant is None and st.session_state.get("benbot_assistant") is not None:
+            assistant = st.session_state.benbot_assistant
+        
+        # Debug logging
+        if assistant is not None:
+            logger.info("Using BenBot Assistant from main app or session state")
+        else:
+            logger.warning("BenBot Assistant not available in main scope or session state")
+            
         # Add a simple container with the chat widget
         with st.container():
-            render_ai_chat_widget()
+            # Pass the assistant instance to the render function
+            try:
+                render_ai_chat_widget(assistant)
+            except TypeError:
+                # If the render function doesn't accept the assistant parameter, call without it
+                render_ai_chat_widget()
     except Exception as e:
-        st.error(f"Could not render AI chat: {str(e)}")
+        logger.error(f"Could not render AI chat: {str(e)}\n{traceback.format_exc()}")
+        st.error(f"Could not render AI chat assistant. Check logs for details.")

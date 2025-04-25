@@ -19,6 +19,8 @@ try:
     from trading_bot.config.migration_utils import get_config_from_legacy_path
     TYPED_SETTINGS_AVAILABLE = True
 except ImportError:
+    # Fallback to our local settings implementation
+    from trading_bot.strategies.strategy_settings import StrategySettings, TradingBotSettings
     TYPED_SETTINGS_AVAILABLE = False
 
 # Import our notification wrapper
@@ -35,6 +37,7 @@ try:
     from trading_bot.strategies.stocks.mean_reversion import MeanReversionStrategy
     from trading_bot.strategies.stocks.trend import MultiTimeframeCorrelationStrategy as TrendFollowingStrategy
     from trading_bot.strategies.stocks.breakout import VolatilityBreakoutStrategy
+    from trading_bot.strategies.hybrid_strategy_adapter import HybridStrategyAdapter
     STRATEGIES_AVAILABLE = True
 except ImportError:
     logger.warning("Some strategy modules could not be imported. Using mock strategies.")
@@ -162,6 +165,9 @@ class StrategyFactory:
             strategy = TrendFollowingStrategy("Trend Following Strategy", config)
         elif strategy_type.lower() == "volatility_breakout":
             strategy = VolatilityBreakoutStrategy("Volatility Breakout Strategy", config)
+        elif strategy_type.lower() == "hybrid":
+            strategy = HybridStrategyAdapter("Hybrid Strategy", parameters=config)
+            logger.info("Created hybrid strategy combining technical, ML, and WeightedAvgPeak signals")
         else:
             logger.warning(f"Unknown strategy type: {strategy_type}. Using momentum strategy.")
             strategy = MomentumStrategy("Momentum Strategy", parameters=config)
@@ -200,5 +206,6 @@ class StrategyFactory:
             "momentum",
             "mean_reversion",
             "trend_following",
-            "volatility_breakout"
+            "volatility_breakout",
+            "hybrid"
         ] 

@@ -11,7 +11,13 @@ import yaml
 import json
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, validator
+try:
+    # Attempt to import model_validator for Pydantic v2
+    from pydantic import model_validator
+except ImportError:
+    # Fall back to root_validator for Pydantic v1
+    from pydantic import root_validator as model_validator
 
 class BrokerSettings(BaseModel):
     """Broker-specific configuration settings."""
@@ -82,18 +88,18 @@ class NotificationSettings(BaseModel):
     
     notification_levels: List[str] = ["critical", "error", "warning", "info"]
     
-    @root_validator
-    def check_notification_channels(cls, values):
+    @model_validator(mode='after')
+    def check_notification_channels(self):
         """Ensure at least one notification channel is properly configured"""
-        telegram_token = values.get('telegram_token')
-        telegram_chat_id = values.get('telegram_chat_id')
-        slack_webhook = values.get('slack_webhook')
-        email_to = values.get('email_to')
-        email_from = values.get('email_from')
-        email_smtp_server = values.get('email_smtp_server')
-        email_username = values.get('email_username')
-        email_password = values.get('email_password')
-        enable_notifications = values.get('enable_notifications', True)
+        telegram_token = self.telegram_token
+        telegram_chat_id = self.telegram_chat_id
+        slack_webhook = self.slack_webhook
+        email_to = self.email_to
+        email_from = self.email_from
+        email_smtp_server = self.email_smtp_server
+        email_username = self.email_username
+        email_password = self.email_password
+        enable_notifications = self.enable_notifications
         
         has_telegram = telegram_token and telegram_chat_id if (telegram_token and telegram_chat_id) else False
         has_slack = bool(slack_webhook)
@@ -107,12 +113,9 @@ class NotificationSettings(BaseModel):
         
         if enable_notifications and not any([has_telegram, has_slack, has_email]):
             import warnings
-            warnings.warn(
-                "Notifications are enabled but no channel is fully configured. "
-                "Please configure at least one of: Telegram, Slack, or Email."
-            )
-            
-        return values
+            warnings.warn("No notification channels configured. Notifications are enabled but won't be sent.")
+        
+        return self
 
 class OrchestratorSettings(BaseModel):
     """Autonomous orchestrator configuration."""

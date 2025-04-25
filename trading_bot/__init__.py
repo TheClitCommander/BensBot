@@ -1,12 +1,32 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Trading Bot Package
+Trading Bot Framework
 
-This package provides a comprehensive algorithmic trading system with:
-- Strategy development and backtesting
-- Real-time market data integration
-- Risk management and position sizing
-- Performance analytics
-- Dashboard visualization
+A framework for building, testing, and deploying automated trading strategies.
 """
 
-__version__ = "1.0.0" 
+# Package metadata
+__version__ = "0.1.0"
+__author__ = "Ben Dickinson"
+
+# Import key components for easy access
+from trading_bot.orchestration.main_orchestrator import MainOrchestrator
+from trading_bot.assistant.benbot_assistant import BenBotAssistant
+
+# Initialize logging
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Suppress verbose logging from libraries
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
+# Export key classes
+__all__ = [
+    'MainOrchestrator',
+    'BenBotAssistant',
+] 
