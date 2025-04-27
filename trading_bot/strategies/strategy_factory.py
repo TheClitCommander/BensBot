@@ -33,11 +33,33 @@ except ImportError:
 
 # Import available strategies
 try:
+    # Stock strategies
     from trading_bot.strategies.stocks.momentum import MomentumStrategy
     from trading_bot.strategies.stocks.mean_reversion import MeanReversionStrategy
     from trading_bot.strategies.stocks.trend import MultiTimeframeCorrelationStrategy as TrendFollowingStrategy
     from trading_bot.strategies.stocks.breakout import VolatilityBreakoutStrategy
     from trading_bot.strategies.hybrid_strategy_adapter import HybridStrategyAdapter
+    
+    # Forex strategies
+    from trading_bot.strategies.forex.trend_following_strategy import ForexTrendFollowingStrategy
+    from trading_bot.strategies.forex.range_trading_strategy import ForexRangeTradingStrategy
+    from trading_bot.strategies.forex.breakout_strategy import ForexBreakoutStrategy
+    from trading_bot.strategies.forex.momentum_strategy import ForexMomentumStrategy
+    from trading_bot.strategies.forex.scalping_strategy import ForexScalpingStrategy
+    from trading_bot.strategies.forex.swing_trading_strategy import ForexSwingTradingStrategy
+    from trading_bot.strategies.forex.news_trading_strategy import ForexNewsTrading
+    from trading_bot.strategies.forex.carry_trade_strategy import ForexCarryTradeStrategy
+    from trading_bot.strategies.forex.grid_trading_strategy import ForexGridTradingStrategy
+    from trading_bot.strategies.forex.counter_trend_strategy import ForexCounterTrendStrategy
+    from trading_bot.strategies.forex.day_trading_strategy import ForexDayTradingStrategy
+    from trading_bot.strategies.forex.position_trading_strategy import ForexPositionTradingStrategy
+    from trading_bot.strategies.forex.price_action_strategy import PriceActionStrategy
+    from trading_bot.strategies.forex.retracement_strategy import ForexRetracementStrategy
+    from trading_bot.strategies.forex.algorithmic_meta_strategy import AlgorithmicMetaStrategy
+    from trading_bot.strategies.forex.one_hour_strategy import OneHourForexStrategy
+    from trading_bot.strategies.forex.pips_a_day_strategy import PipsADayStrategy
+    from trading_bot.strategies.forex.arbitrage_strategy import ArbitrageStrategy
+
     STRATEGIES_AVAILABLE = True
 except ImportError:
     logger.warning("Some strategy modules could not be imported. Using mock strategies.")
@@ -157,6 +179,8 @@ class StrategyFactory:
         
         # Create base strategy based on type
         strategy = None
+        
+        # Stock strategies
         if strategy_type.lower() == "momentum":
             strategy = MomentumStrategy("Momentum Strategy", parameters=config)
         elif strategy_type.lower() == "mean_reversion":
@@ -168,6 +192,64 @@ class StrategyFactory:
         elif strategy_type.lower() == "hybrid":
             strategy = HybridStrategyAdapter("Hybrid Strategy", parameters=config)
             logger.info("Created hybrid strategy combining technical, ML, and WeightedAvgPeak signals")
+        
+        # Forex strategies
+        elif strategy_type.lower() == "forex_trend_following":
+            strategy = ForexTrendFollowingStrategy("Forex Trend-Following Strategy", parameters=config)
+            logger.info("Created forex trend-following strategy for currency pairs")
+        elif strategy_type.lower() == "forex_range_trading":
+            strategy = ForexRangeTradingStrategy("Forex Range Trading Strategy", parameters=config)
+            logger.info("Created forex range trading strategy for currency pairs")
+        elif strategy_type.lower() == "forex_breakout":
+            strategy = ForexBreakoutStrategy("Forex Breakout Strategy", parameters=config)
+            logger.info("Created forex breakout strategy for currency pairs")
+        elif strategy_type.lower() == "forex_momentum":
+            strategy = ForexMomentumStrategy("Forex Momentum Strategy", parameters=config)
+            logger.info("Created forex momentum strategy for currency pairs")
+        elif strategy_type.lower() == "forex_scalping":
+            strategy = ForexScalpingStrategy("Forex Scalping Strategy", parameters=config)
+            logger.info("Created forex scalping strategy for currency pairs")
+        elif strategy_type.lower() == "forex_swing":
+            strategy = ForexSwingTradingStrategy("Forex Swing Trading Strategy", parameters=config)
+            logger.info("Created forex swing trading strategy for currency pairs")
+        elif strategy_type.lower() == "forex_news":
+            strategy = ForexNewsTrading("Forex News Trading Strategy", parameters=config)
+            logger.info("Created forex news trading strategy for currency pairs")
+        elif strategy_type.lower() == "forex_carry":
+            strategy = ForexCarryTradeStrategy("Forex Carry Trade Strategy", parameters=config)
+            logger.info("Created forex carry trade strategy for currency pairs")
+        elif strategy_type.lower() == "forex_grid":
+            strategy = ForexGridTradingStrategy("Forex Grid Trading Strategy", parameters=config)
+            logger.info("Created forex grid trading strategy for currency pairs")
+        elif strategy_type.lower() == "forex_counter_trend":
+            strategy = ForexCounterTrendStrategy("Forex Counter-Trend Strategy", parameters=config)
+            logger.info("Created forex counter-trend strategy for currency pairs")
+        elif strategy_type.lower() == "forex_day_trading":
+            strategy = ForexDayTradingStrategy("Forex Day Trading Strategy", parameters=config)
+            logger.info("Created forex day trading strategy for currency pairs")
+        elif strategy_type.lower() == "forex_position":
+            strategy = ForexPositionTradingStrategy("Forex Position Trading Strategy", parameters=config)
+            logger.info("Created forex position trading strategy for currency pairs")
+        elif strategy_type.lower() == "forex_price_action":
+            strategy = PriceActionStrategy("Forex Price Action Strategy", parameters=config)
+            logger.info("Created forex price action strategy for currency pairs")
+        elif strategy_type.lower() == "forex_retracement":
+            strategy = ForexRetracementStrategy("Forex Retracement Strategy", parameters=config)
+            logger.info("Created forex retracement strategy for currency pairs")
+        elif strategy_type.lower() == "algorithmic_meta":
+            strategy = AlgorithmicMetaStrategy("Algorithmic Meta Strategy", parameters=config)
+            logger.info("Created algorithmic meta strategy for currency pairs")
+        elif strategy_type.lower() == "one_hour_forex":
+            strategy = OneHourForexStrategy("One-Hour Forex Strategy", parameters=config)
+            logger.info("Created one-hour forex strategy for currency pairs")
+        elif strategy_type.lower() == "pips_a_day":
+            strategy = PipsADayStrategy("Pips-a-Day Forex Strategy", parameters=config)
+            logger.info("Created pips-a-day forex strategy for currency pairs")
+        elif strategy_type.lower() == "arbitrage" or strategy_type.lower() == "forex_arbitrage":
+            strategy = ArbitrageStrategy("Forex Arbitrage Strategy", parameters=config)
+            logger.info("Created arbitrage forex strategy for currency pairs")
+        
+        # Default fallback
         else:
             logger.warning(f"Unknown strategy type: {strategy_type}. Using momentum strategy.")
             strategy = MomentumStrategy("Momentum Strategy", parameters=config)
@@ -203,9 +285,30 @@ class StrategyFactory:
     def available_strategies():
         """Get names of available strategies"""
         return [
+            # Stock strategies
             "momentum",
             "mean_reversion",
             "trend_following",
             "volatility_breakout",
-            "hybrid"
-        ] 
+            "hybrid",
+            
+            # Forex strategies
+            "forex_trend_following",
+            "forex_range_trading",
+            "forex_breakout",
+            "forex_momentum",
+            "forex_scalping",
+            "forex_swing",
+            "forex_news",
+            "forex_carry",
+            "forex_grid",
+            "forex_counter_trend",
+            'forex_day_trading',
+            'forex_position_trading',
+            'forex_price_action',
+            'forex_retracement',
+            'algorithmic_meta',
+            'one_hour_forex',
+            'forex_pips_a_day',
+            'forex_arbitrage'
+        ]

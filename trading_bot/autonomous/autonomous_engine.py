@@ -24,16 +24,12 @@ import random
 try:
     from trading_bot.strategies.modular_strategy_system import ComponentType
     from trading_bot.strategies.components.component_registry import get_component_registry
-except ImportError:
-    pass
-
-# Import existing strategy modules
-try:
     from trading_bot.strategies.momentum import MomentumStrategy
     from trading_bot.strategies.mean_reversion import MeanReversionStrategy
     from trading_bot.strategies.trend_following import TrendFollowingStrategy
     from trading_bot.strategies.breakout import VolatilityBreakout
     from trading_bot.strategies.ml_strategy import MLStrategy
+    from trading_bot.strategies.optimizer.enhanced_optimizer import EnhancedOptimizer
 except ImportError:
     pass
 
@@ -42,6 +38,12 @@ try:
     from trading_bot.scanners.technical_scanner import TechnicalScanner
     from trading_bot.scanners.fundamental_scanner import FundamentalScanner
     from trading_bot.scanners.sentiment_scanner import SentimentScanner
+except ImportError:
+    pass
+
+# Import event system
+try:
+    from trading_bot.event_system import EventBus, Event, EventType
 except ImportError:
     pass
 
@@ -155,9 +157,12 @@ class AutonomousEngine:
         # Strategy candidates
         self.strategy_candidates = {}  # Dict[str, StrategyCandidate]
         self.top_candidates = []  # List of strategies that meet criteria
+        self.near_miss_candidates = []  # List of strategies that are near misses
         
         # Universe and strategy types
         self.universe = ""  # Current universe being processed
+        self.symbols = []  # Symbols for the universe
+        self.last_scan_time = datetime.now() - timedelta(days=365)  # Far in past
         self.strategy_types = []  # List of strategy types to generate
         
         # Thresholds for evaluating strategies
@@ -167,6 +172,23 @@ class AutonomousEngine:
             "max_drawdown": 15.0,
             "min_win_rate": 55.0
         }
+        
+        # Near-miss thresholds (percentage of main thresholds)
+        self.near_miss_threshold_pct = 0.85  # 85% of threshold is considered "near-miss"
+        
+        # Optimization
+        self.optimizer = None
+        try:
+            self.optimizer = EnhancedOptimizer()
+        except NameError:
+            logger.warning("EnhancedOptimizer not available")
+            
+        # Event bus
+        self.event_bus = None
+        try:
+            self.event_bus = EventBus()
+        except NameError:
+            logger.warning("EventBus not available")
         
         # Process control
         self.running = False
@@ -227,6 +249,7 @@ class AutonomousEngine:
             "status_message": self.status_message,
             "candidates_count": len(self.strategy_candidates),
             "top_candidates_count": len(self.top_candidates),
+            "near_miss_candidates_count": len(self.near_miss_candidates),
             "last_updated": datetime.now().isoformat()
         }
     
@@ -237,6 +260,10 @@ class AutonomousEngine:
     def get_top_candidates(self) -> List[Dict]:
         """Get top strategy candidates that meet criteria"""
         return [candidate.to_dict() for candidate in self.top_candidates]
+    
+    def get_near_miss_candidates(self) -> List[Dict]:
+        """Get near-miss strategy candidates"""
+        return [candidate.to_dict() for candidate in self.near_miss_candidates]
     
     def approve_strategy(self, strategy_id: str) -> bool:
         """Approve a strategy for deployment"""
@@ -295,11 +322,7 @@ class AutonomousEngine:
             
         # Set default strategy types if none specified
         if not self.strategy_types:
-            self.strategy_types = [
-                "Iron Condor", "Butterfly Spread", "Bear Put Spread", 
-                "Calendar Spread", "Covered Call", "Cash-Secured Put", 
-                "Straddle", "Collar"
-            ]
+            self.strategy_types = ["Momentum", "MeanReversion", "TrendFollowing"]
         
         # Get symbols for current universe
         self.symbols = self._get_symbols_for_universe(self.universe)
@@ -309,8 +332,12 @@ class AutonomousEngine:
             return {"error": "No symbols found for universe"}
             
         # Generate strategies based on opportunities
-        self._generate_strategies()
+        candidates = self._generate_strategies()
         
+        # Add candidates to our registry
+        for candidate in candidates:
+            self.strategy_candidates[candidate.strategy_id] = candidate
+            
         # Backtest all generated strategies
         for strategy_id, strategy in self.strategy_candidates.items():
             if strategy.status == "pending":
@@ -328,6 +355,7 @@ class AutonomousEngine:
             "symbols_scanned": len(self.symbols),
             "strategies_generated": len(self.strategy_candidates),
             "strategies_meeting_criteria": len(self.top_candidates),
+            "near_miss_strategies": len(self.near_miss_candidates),
             "scan_time": self.last_scan_time.isoformat(),
             "data_source": "real" if self.use_real_data else "simulated"
         }
@@ -378,13 +406,13 @@ class AutonomousEngine:
                     strat_dict["trigger"] = f"{trigger_type.capitalize()}: Opportunity detected"
             else:
                 # Generate a realistic trigger based on strategy type
-                if strategy.strategy_type == "Iron Condor":
+                if strategy.strategy_type == "Momentum":
                     strat_dict["trigger"] = "Volatility: Range-bound price action expected"
-                elif strategy.strategy_type == "Butterfly Spread":
+                elif strategy.strategy_type == "MeanReversion":
                     strat_dict["trigger"] = "Technical: Price consolidation near key level"
-                elif strategy.strategy_type == "Straddle":
+                elif strategy.strategy_type == "TrendFollowing":
                     strat_dict["trigger"] = "Event-driven: High impact announcement pending"
-                elif strategy.strategy_type == "Collar":
+                elif strategy.strategy_type == "VolatilityBreakout":
                     strat_dict["trigger"] = "Portfolio: Protecting gains on long position"
                 else:
                     strat_dict["trigger"] = "Market analysis: Favorable risk/reward scenario"
@@ -429,43 +457,48 @@ class AutonomousEngine:
             
             # Phase 2: Strategy generation
             self.current_phase = "generating"
-            self.status_message = "Generating strategy variations..."
+            self.status_message = "Generating strategy candidates..."
             self.progress = 30
             
             # For demo, simulate strategy generation time
             time.sleep(2)
             
             # Generate strategies based on universe and types
-            strategies = self._generate_strategies()
+            candidates = self._generate_strategies()
             
-            # Phase 3: Backtesting
+            # Add candidates to registry
+            for candidate in candidates:
+                self.strategy_candidates[candidate.strategy_id] = candidate
+            
+            time.sleep(1)  # Simulate processing time
+            
+            # Phase 3: Backtesting strategies
             self.current_phase = "backtesting"
-            self.status_message = "Backtesting strategies..."
-            self.progress = 50
+            self.status_message = "Backtesting strategy candidates..."
+            self.progress = 60
             
-            # For demo, simulate backtesting time
-            time.sleep(3)
+            for strategy_id, strategy in self.strategy_candidates.items():
+                # Skip already backtested strategies
+                if strategy.status == "pending":
+                    self._backtest_strategy(strategy)
             
-            # Backtest strategies
-            for strategy in strategies:
-                # For demo, simulate individual backtesting
-                time.sleep(0.5)
-                
-                self._backtest_strategy(strategy)
-                self.progress = min(80, self.progress + 2)
+            time.sleep(1)  # Simulate processing time
             
-            # Phase 4: Evaluation
+            # Phase 4: Evaluating strategies
             self.current_phase = "evaluating"
-            self.status_message = "Evaluating strategies against criteria..."
-            self.progress = 90
+            self.status_message = "Evaluating strategy performance..."
+            self.progress = 80
             
-            # For demo, simulate evaluation time
-            time.sleep(1)
-            
-            # Evaluate strategies against thresholds
             self._evaluate_strategies()
             
-            # Phase 5: Completed
+            # Phase 5: Optimization
+            self.current_phase = "optimizing"
+            self.status_message = "Optimizing near-miss strategies..."
+            self.progress = 90
+            
+            self._optimize_near_miss_strategies()
+            
+            # Phase 6: Completed
             self.current_phase = "completed"
             self.status_message = "Process completed"
             self.progress = 100
@@ -771,6 +804,7 @@ class AutonomousEngine:
     def _evaluate_strategies(self) -> None:
         """Evaluate strategies against performance thresholds"""
         self.top_candidates = []
+        self.near_miss_candidates = []
         
         for strategy_id, strategy in self.strategy_candidates.items():
             # Check if strategy meets performance criteria
@@ -781,14 +815,24 @@ class AutonomousEngine:
                 strategy.win_rate >= self.thresholds["min_win_rate"]
             )
             
+            # Check if strategy is a near-miss (close to meeting criteria)
+            is_near_miss = self._is_near_miss_candidate(strategy)
+            
             strategy.meets_criteria = meets_criteria
             
             # Add to top candidates if meets criteria
             if meets_criteria:
                 self.top_candidates.append(strategy)
+            # Add to near-miss candidates if close but doesn't fully meet criteria
+            elif is_near_miss:
+                self.near_miss_candidates.append(strategy)
         
         # Sort top candidates by returns
         self.top_candidates.sort(key=lambda x: x.returns, reverse=True)
+        
+        # If we have near-miss candidates and an optimizer, try to optimize them
+        if self.optimizer and self.near_miss_candidates:
+            self._optimize_near_miss_candidates()
     
     def _save_candidates(self) -> None:
         """Save strategy candidates to disk"""
@@ -804,6 +848,142 @@ class AutonomousEngine:
                 json.dump(candidates_data, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving candidates: {e}")
+            
+    def _is_near_miss_candidate(self, strategy: 'StrategyCandidate') -> bool:
+        """Check if a strategy is a near-miss candidate (close to meeting criteria)
+        
+        Args:
+            strategy: Strategy to check
+            
+        Returns:
+            True if strategy is a near-miss candidate
+        """
+        # Don't consider strategies that already meet criteria or have been optimized
+        if strategy.meets_criteria or strategy.status in ["approved", "rejected", "optimized", "exhausted"]:
+            return False
+            
+        # Calculate how close the strategy is to meeting the thresholds
+        sharpe_ratio_pct = strategy.sharpe_ratio / self.thresholds["min_sharpe_ratio"]
+        profit_factor_pct = strategy.profit_factor / self.thresholds["min_profit_factor"]
+        drawdown_pct = self.thresholds["max_drawdown"] / max(strategy.drawdown, 0.01)  # Prevent division by zero
+        win_rate_pct = strategy.win_rate / self.thresholds["min_win_rate"]
+        
+        # Consider it a near-miss if it meets the near-miss threshold for all criteria
+        return all([
+            sharpe_ratio_pct >= self.near_miss_threshold_pct,
+            profit_factor_pct >= self.near_miss_threshold_pct,
+            drawdown_pct >= self.near_miss_threshold_pct,
+            win_rate_pct >= self.near_miss_threshold_pct
+        ])
+    
+    def _optimize_near_miss_candidates(self) -> None:
+        """Optimize near-miss candidates using EnhancedOptimizer"""
+        if not self.optimizer:
+            logger.warning("Cannot optimize: EnhancedOptimizer not available")
+            return
+            
+        logger.info(f"Optimizing {len(self.near_miss_candidates)} near-miss candidates")
+        
+        for candidate in self.near_miss_candidates:
+            # Skip already optimized candidates
+            if candidate.status in ["optimized", "exhausted"]:
+                continue
+                
+            logger.info(f"Optimizing strategy {candidate.strategy_id} ({candidate.strategy_type})")
+            
+            try:
+                # Set the strategy parameters for optimization
+                self.optimizer.with_parameter_ranges(candidate.parameters)
+                
+                # Attempt to optimize
+                optimization_result = self.optimizer.optimize(candidate)
+                
+                if optimization_result and optimization_result.best_parameters:
+                    # Update the strategy with the optimized parameters
+                    candidate.parameters = optimization_result.best_parameters
+                    
+                    # Backtest with new parameters
+                    self._backtest_strategy(candidate)
+                    
+                    # Check if it now meets criteria
+                    meets_criteria = (
+                        candidate.sharpe_ratio >= self.thresholds["min_sharpe_ratio"] and
+                        candidate.profit_factor >= self.thresholds["min_profit_factor"] and
+                        candidate.drawdown <= self.thresholds["max_drawdown"] and
+                        candidate.win_rate >= self.thresholds["min_win_rate"]
+                    )
+                    
+                    if meets_criteria:
+                        # Update status and add to top candidates
+                        candidate.meets_criteria = True
+                        candidate.status = "optimized"
+                        if candidate not in self.top_candidates:
+                            self.top_candidates.append(candidate)
+                        
+                        # Emit event
+                        self._emit_event("STRATEGY_OPTIMISED", {
+                            "strategy_id": candidate.strategy_id,
+                            "strategy_type": candidate.strategy_type,
+                            "symbols": candidate.symbols,
+                            "original_parameters": optimization_result.parameter_sets[0] if optimization_result.parameter_sets else {},
+                            "optimized_parameters": candidate.parameters,
+                            "performance": candidate.to_dict()["performance"]
+                        })
+                    else:
+                        # Strategy still doesn't meet criteria after optimization
+                        candidate.status = "exhausted"
+                        
+                        # Emit event
+                        self._emit_event("STRATEGY_EXHAUSTED", {
+                            "strategy_id": candidate.strategy_id,
+                            "strategy_type": candidate.strategy_type,
+                            "symbols": candidate.symbols,
+                            "parameters": candidate.parameters,
+                            "performance": candidate.to_dict()["performance"],
+                            "thresholds": self.thresholds
+                        })
+                else:
+                    # Optimization didn't improve the strategy
+                    candidate.status = "exhausted"
+                    
+                    # Emit event
+                    self._emit_event("STRATEGY_EXHAUSTED", {
+                        "strategy_id": candidate.strategy_id,
+                        "strategy_type": candidate.strategy_type,
+                        "symbols": candidate.symbols,
+                        "parameters": candidate.parameters,
+                        "performance": candidate.to_dict()["performance"],
+                        "thresholds": self.thresholds
+                    })
+            except Exception as e:
+                logger.error(f"Error optimizing strategy {candidate.strategy_id}: {e}")
+                # Mark as failed optimization
+                candidate.status = "optimization_failed"
+        
+        # Save all candidates after optimization
+        self._save_candidates()
+    
+    def _emit_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Emit an event to the event bus
+        
+        Args:
+            event_type: Type of event
+            data: Event data
+        """
+        if not self.event_bus:
+            return
+            
+        try:
+            event = Event(
+                event_type=event_type,
+                source="AutonomousEngine",
+                data=data,
+                timestamp=datetime.now()
+            )
+            self.event_bus.publish(event)
+            logger.info(f"Emitted event: {event_type}")
+        except Exception as e:
+            logger.error(f"Error emitting event {event_type}: {e}")
     
     def _load_candidates(self) -> None:
         """Load strategy candidates from disk"""

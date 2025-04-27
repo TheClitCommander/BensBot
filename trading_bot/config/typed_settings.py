@@ -32,7 +32,7 @@ class BrokerSettings(BaseModel):
     # For live trading environments
     paper_trading: bool = True
     
-    @validator('api_key')
+    @validator('api_key', allow_reuse=True)
     def api_key_must_not_be_empty(cls, v):
         if v == "":
             raise ValueError('API key cannot be empty string')

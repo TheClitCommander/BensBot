@@ -18,6 +18,15 @@ from trading_bot.strategies.modular_strategy_system import (
     FilterComponent, PositionSizerComponent, ExitManagerComponent
 )
 
+# Import strategy adapter
+try:
+    from trading_bot.strategies.strategy_adapter import StrategyAdapter, create_strategy_adapter
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("Strategy adapter not available")
+    StrategyAdapter = None
+    create_strategy_adapter = None
+
 logger = logging.getLogger(__name__)
 
 class ComponentRegistry:
@@ -87,182 +96,99 @@ class ComponentRegistry:
                 self.register_component_class(name, obj)
     
     def register_component_class(self, name: str, component_class: Type[StrategyComponent]) -> None:
-        """
-        Register a component class.
+        """Register a component class with the registry
         
         Args:
-            name: Component class name
-            component_class: Component class
+            name: Component name
+            component_class: Component class to register
         """
-        if name in self.component_classes:
-            logger.warning(f"Component class '{name}' already registered, overwriting")
+        component_type = self._get_component_type(component_class)
         
-        self.component_classes[name] = component_class
-        
-        # Extract metadata if available
-        self._extract_component_metadata(name, component_class)
-    
-    def _extract_component_metadata(self, name: str, component_class: Type[StrategyComponent]) -> None:
-        """
-        Extract and store component metadata.
-        
-        Args:
-            name: Component class name
-            component_class: Component class
-        """
-        metadata = {
-            'name': name,
-            'description': getattr(component_class, '__doc__', '').strip(),
-            'parameters': {}
+        if component_type is None:
+            logger.error(f"Cannot determine component type for {component_class.__name__}")
+            return
+            
+        # Save both the original class and information needed for adaptation
+        self.components[component_type][name] = {
+            'class': component_class,
+            'requires_adapter': not hasattr(component_class, 'generate_signals') or 
+                             not hasattr(component_class, 'size_position') or 
+                             not hasattr(component_class, 'manage_open_trades')
         }
+        logger.info(f"Registered {component_type.name} component: {name}")
+    
+    def _get_component_type(self, component_class: Type[StrategyComponent]) -> Optional[ComponentType]:
+        """
+        Determine the component type from a class.
         
-        # Determine component type
+        Args:
+            component_class: Component class
+            
+        Returns:
+            Component type or None if unknown
+        """
         if issubclass(component_class, SignalGeneratorComponent):
-            metadata['type'] = ComponentType.SIGNAL_GENERATOR.name
+            return ComponentType.SIGNAL_GENERATOR
         elif issubclass(component_class, FilterComponent):
-            metadata['type'] = ComponentType.FILTER.name
+            return ComponentType.FILTER
         elif issubclass(component_class, PositionSizerComponent):
-            metadata['type'] = ComponentType.POSITION_SIZER.name
+            return ComponentType.POSITION_SIZER
         elif issubclass(component_class, ExitManagerComponent):
-            metadata['type'] = ComponentType.EXIT_MANAGER.name
+            return ComponentType.EXIT_MANAGER
         else:
-            metadata['type'] = 'Unknown'
-        
-        # Extract parameter information from __init__ function
-        try:
-            init_signature = inspect.signature(component_class.__init__)
-            for param_name, param in init_signature.parameters.items():
-                # Skip self and component_id parameters
-                if param_name in ['self', 'component_id']:
-                    continue
-                
-                # Extract parameter metadata
-                param_info = {
-                    'required': param.default == inspect.Parameter.empty,
-                    'default': None if param.default == inspect.Parameter.empty else param.default,
-                    'type': str(param.annotation) if param.annotation != inspect.Parameter.empty else 'Any'
-                }
-                
-                metadata['parameters'][param_name] = param_info
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Could not extract parameter info for {name}: {e}")
-        
-        self.component_metadata[name] = metadata
+            return None
     
-    def create_component(self, 
-                        component_type: Union[ComponentType, str], 
-                        component_class: Union[str, Type[StrategyComponent]], 
-                        parameters: Dict[str, Any]) -> StrategyComponent:
-        """
-        Create a component instance.
+    def create_component_instance(self, component_type: ComponentType, name: str, 
+        **kwargs) -> Optional[StrategyComponent]:
+        """Create an instance of a component
         
         Args:
-            component_type: Type of component
-            component_class: Component class name or class
-            parameters: Component parameters
+            component_type: Type of component to create
+            name: Name of component to create
+            **kwargs: Additional arguments to pass to component constructor
             
         Returns:
-            Component instance
+            Component instance or None if component not found
         """
-        # Convert string type to enum if needed
-        if isinstance(component_type, str):
-            component_type = ComponentType[component_type]
-        
-        # Get component class if string
-        if isinstance(component_class, str):
-            if component_class not in self.component_classes:
-                raise ValueError(f"Component class '{component_class}' not found in registry")
+        if name not in self.components[component_type]:
+            logger.error(f"Component not found: {component_type.name}/{name}")
+            return None
             
-            class_obj = self.component_classes[component_class]
-        else:
-            class_obj = component_class
+        component_info = self.components[component_type][name]
+        component_class = component_info['class']
+        requires_adapter = component_info.get('requires_adapter', False)
         
-        # Create a unique ID for the component
-        component_id = str(uuid.uuid4())
-        
-        # Create component instance with parameters
         try:
-            component = class_obj(component_id=component_id, **parameters)
+            # Create component instance
+            component = component_class(**kwargs)
+            
+            # Wrap with adapter if needed and adapter is available
+            if requires_adapter and 'create_strategy_adapter' in globals() and create_strategy_adapter is not None:
+                logger.info(f"Creating adapter for {component_type.name}/{name}")
+                return create_strategy_adapter(component)
+            
+            return component
         except Exception as e:
-            logger.error(f"Error creating component {component_class}: {e}")
-            raise
-        
-        # Register and return the component
-        self.register_component(component)
-        return component
+            logger.error(f"Error creating component {component_type.name}/{name}: {e}")
+            return None
     
-    def register_component(self, component: StrategyComponent) -> None:
-        """
-        Register a component instance.
+    def get_component_by_name(self, name: str) -> Optional[Type[StrategyComponent]]:
+        """Get a component class by name, searching all component types
         
         Args:
-            component: Component instance
-        """
-        component_type = component.component_type
-        component_id = component.component_id
-        
-        if component_id in self.components[component_type]:
-            logger.warning(f"Component with ID '{component_id}' already registered, overwriting")
-        
-        self.components[component_type][component_id] = component
-    
-    def get_component(self, component_type: Union[ComponentType, str], component_id: str) -> Optional[StrategyComponent]:
-        """
-        Get a component by ID and type.
-        
-        Args:
-            component_type: Type of component
-            component_id: Component ID
-            
-        Returns:
-            Component instance or None if not found
-        """
-        # Convert string type to enum if needed
-        if isinstance(component_type, str):
-            component_type = ComponentType[component_type]
-            
-        return self.components[component_type].get(component_id)
-    
-    def get_components_by_type(self, component_type: Union[ComponentType, str]) -> Dict[str, StrategyComponent]:
-        """
-        Get all components of a specific type.
-        
-        Args:
-            component_type: Type of component
-            
-        Returns:
-            Dictionary of component ID -> component
-        """
-        # Convert string type to enum if needed
-        if isinstance(component_type, str):
-            component_type = ComponentType[component_type]
-            
-        return self.components[component_type]
-    
-    def get_all_components(self) -> Dict[ComponentType, Dict[str, StrategyComponent]]:
-        """
-        Get all registered components.
-        
-        Returns:
-            Dictionary of component type -> (component ID -> component)
-        """
-        return self.components
-    
-    def get_component_class(self, class_name: str) -> Optional[Type[StrategyComponent]]:
-        """
-        Get a component class by name.
-        
-        Args:
-            class_name: Component class name
+            name: Name of component to find
             
         Returns:
             Component class or None if not found
         """
-        return self.component_classes.get(class_name)
+        for component_type in ComponentType:
+            if name in self.components[component_type]:
+                return self.components[component_type][name]['class']
+                
+        return None
     
     def get_all_component_classes(self) -> Dict[str, Type[StrategyComponent]]:
-        """
-        Get all registered component classes.
+        """Get all registered component classes.
         
         Returns:
             Dictionary of class name -> class
@@ -280,6 +206,45 @@ class ComponentRegistry:
             Component metadata or None if not found
         """
         return self.component_metadata.get(class_name)
+    
+    def get_strategy_class(self, strategy_type: str) -> Type[object]:
+        """Get the class for a registered strategy type."""
+        return self.components.get(strategy_type, None)
+        
+    def get_strategy_instance(self, strategy_type: str) -> Any:
+        """Get an instance of a strategy, properly wrapped with the adapter if needed.
+        
+        This ensures all strategies expose a consistent interface regardless of their
+        original implementation.
+        
+        Args:
+            strategy_type: The type of strategy to instantiate
+            
+        Returns:
+            A strategy instance wrapped with the adapter if needed
+        """
+        from trading_bot.strategies.strategy_adapter import create_strategy_adapter
+        
+        strategy_class = self.get_strategy_class(strategy_type)
+        if strategy_class is None:
+            return None
+            
+        try:
+            strategy_instance = strategy_class()
+            
+            # Check if it already implements the required interface
+            if (hasattr(strategy_instance, 'generate_signals') and
+                hasattr(strategy_instance, 'size_position') and
+                hasattr(strategy_instance, 'manage_open_trades')):
+                # Already implements the interface
+                return strategy_instance
+            else:
+                # Wrap with adapter
+                return create_strategy_adapter(strategy_instance)
+                
+        except Exception as e:
+            logger.error(f"Error instantiating strategy {strategy_type}: {str(e)}")
+            return None
     
     def get_all_component_metadata(self) -> Dict[str, Dict[str, Any]]:
         """

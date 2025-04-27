@@ -73,6 +73,11 @@ class EventType(Enum):
     MEMORY_CREATED = "memory_created"
     MEMORY_UPDATED = "memory_updated"
     MEMORY_CONSOLIDATED = "memory_consolidated"
+    
+    # Approval Workflow Events
+    APPROVAL_REQUEST_CREATED = "approval_request_created"
+    APPROVAL_REQUEST_APPROVED = "approval_request_approved"
+    APPROVAL_REQUEST_REJECTED = "approval_request_rejected"
 
 
 class Event:

@@ -8,8 +8,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+import sys
+import logging
 import pandas as pd
 import numpy as np
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("dashboard")
 try:
     import plotly.express as px
     import plotly.graph_objects as go
@@ -76,8 +85,6 @@ except ImportError as e:
     
 # Set overall availability flag    
 modular_strategy_available = modular_strategy_full or modular_strategy_simplified
-import sys
-import logging
 import json
 # Commented out socketio - not needed for Streamlit app
 import re
@@ -96,13 +103,6 @@ from typing import List, Dict, Any, Tuple
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("dashboard")
 
 # Try to import LiveDataManager for real-time features
 try:
@@ -1820,187 +1820,12 @@ def display_api_usage():
     
     # Check if approaching limit on any API
     approaching_limit = [p for p, c in zip(providers, calls) if c >= 80]
-    # Autonomous Trading Tab Content
-with tab13:
-    st.markdown('<div class="sub-header">🤖 Autonomous Trading</div>', unsafe_allow_html=True)
-    
-    # Initialize and render the autonomous trading UI
-    if autonomous_ui_available:
-        # Create the autonomous UI instance
-        autonomous_ui = AutonomousUI()
         
-        # Render the UI
-        autonomous_ui.render()
-    else:        
-        # Create columns for control panel and results display
-        auto_col1, auto_col2 = st.columns([1, 3])
-    
-    with auto_col1:
-        st.markdown("### Control Panel")
-        st.markdown("The system automatically selects stocks, generates strategies, and backtests them.")
-        
-        # Market scanning interval
-        scan_interval = st.selectbox(
-            "Market Scan Frequency",
-            ["Daily (End of Day)", "Daily (Pre-market)", "Weekly", "Custom"],
-            index=0
-        )
-        
-        # Strategy generation settings
-        st.markdown("### Strategy Generation")
-        
-        strategy_types = st.multiselect(
-            "Strategy Types to Consider",
-            ["Momentum", "Mean Reversion", "Trend Following", "Volatility Breakout", "Machine Learning"],
-            ["Momentum", "Mean Reversion", "Trend Following"]
-        )
-        
-        # Performance thresholds
-        st.markdown("### Performance Thresholds")
-        
-        min_sharpe = st.slider("Minimum Sharpe Ratio", 0.0, 3.0, 1.0, 0.1)
-        min_profit_factor = st.slider("Minimum Profit Factor", 1.0, 5.0, 1.5, 0.1)
-        max_drawdown = st.slider("Maximum Drawdown (%)", 5.0, 50.0, 20.0, 1.0)
-        min_win_rate = st.slider("Minimum Win Rate (%)", 30.0, 80.0, 50.0, 1.0)
-        
-        # Market universe
-        st.markdown("### Market Universe")
-        
-        market_universe = st.selectbox(
-            "Securities Universe",
-            ["S&P 500", "Nasdaq 100", "Dow Jones 30", "Russell 2000", "Crypto Top 20", "Forex Majors", "Custom Watchlist"],
-            index=1
-        )
-        
-        # Launch autonomous process
-        if st.button("🚀 Launch Autonomous Process", use_container_width=True, type="primary"):
-            # This would trigger the autonomous workflow
-            st.session_state.autonomous_process_running = True
-        
-        if st.button("⏹️ Stop Process", use_container_width=True):
-            st.session_state.autonomous_process_running = False
-        
-        # System status indicators
-        st.markdown("### System Status")
-        
-        # Create status indicators
-        status_running = st.session_state.get('autonomous_process_running', False)
-        
-        st.markdown(f"**Process Status:** {'🟢 Running' if status_running else '⚪ Idle'}")
-        
-        # Show progress when running
-        if status_running:
-            st.progress(75, "Scanning markets and generating strategies...")
-            
-            # Show some stats
-            st.markdown("**Current Activity:**")
-            st.markdown("- Scanning Nasdaq 100 stocks")
-            st.markdown("- Testing Momentum strategy variations")
-            st.markdown("- Optimizing parameters for 3 candidates")
-    
-    with auto_col2:
-        # Only show content when process has been started at least once
-        if 'autonomous_process_running' in st.session_state:
-            st.markdown("### Generated Strategies Ready for Approval")
-            
-            # Create tabs for different strategy types
-            strategy_tabs = st.tabs(["Top Performers", "All Strategies", "Historical Performance"])
-            
-            with strategy_tabs[0]:
-                # Show top strategies ready for approval
-                st.markdown("#### Top-Performing Strategies")
-                st.markdown("These strategies have been automatically generated, backtested, and meet your performance criteria.")
-                
-                # Create a dataframe with simulated strategy results
-                strategies_data = [
-                    {"Strategy ID": "MOM-TECH-2504", "Type": "Momentum", "Universe": "Tech Sector", "Return": 27.8, "Sharpe": 1.92, "Drawdown": 12.3, "Win Rate": 61.5, "Trades": 78},
-                    {"Strategy ID": "MR-BANK-2504", "Type": "Mean Reversion", "Universe": "Banking Sector", "Return": 19.5, "Sharpe": 1.67, "Drawdown": 9.8, "Win Rate": 72.3, "Trades": 65},
-                    {"Strategy ID": "TF-NDX-2504", "Type": "Trend Following", "Universe": "Nasdaq 100", "Return": 22.4, "Sharpe": 1.74, "Drawdown": 15.2, "Win Rate": 56.8, "Trades": 42},
-                ]
-                
-                strategies_df = pd.DataFrame(strategies_data)
-                
-                # Add approval buttons
-                strategies_df["Approval"] = None
-                
-                # Display the dataframe
-                st.dataframe(strategies_df, use_container_width=True)
-                
-                # Show action buttons for each strategy
-                cols = st.columns(3)
-                
-                with cols[0]:
-                    st.button("👍 Approve Momentum", key="approve_mom", use_container_width=True)
-                
-                with cols[1]:
-                    st.button("👍 Approve Mean Reversion", key="approve_mr", use_container_width=True)
-                
-                with cols[2]:
-                    st.button("👍 Approve Trend Following", key="approve_tf", use_container_width=True)
-                
-                # Option to approve all
-                st.button("✅ Approve All Strategies", use_container_width=True)
-            
-            with strategy_tabs[1]:
-                # Show all generated strategies
-                st.markdown("#### All Generated Strategies")
-                
-                # Add more strategies to the list
-                all_strategies_data = strategies_data + [
-                    {"Strategy ID": "VB-ENERGY-2504", "Type": "Volatility Breakout", "Universe": "Energy Sector", "Return": 15.7, "Sharpe": 1.31, "Drawdown": 18.9, "Win Rate": 48.5, "Trades": 33},
-                    {"Strategy ID": "ML-BROAD-2504", "Type": "Machine Learning", "Universe": "S&P 500", "Return": 16.8, "Sharpe": 1.45, "Drawdown": 16.2, "Win Rate": 55.2, "Trades": 124},
-                ]
-                
-                all_strategies_df = pd.DataFrame(all_strategies_data)
-                
-                # Add status column
-                all_strategies_df["Status"] = ["Ready for Approval", "Ready for Approval", "Ready for Approval", "Below Threshold", "Below Threshold"]
-                
-                # Display all strategies
-                st.dataframe(all_strategies_df, use_container_width=True)
-                
-                # Filter options
-                st.markdown("#### Filter Options")
-                
-                filter_cols = st.columns(4)
-                
-                with filter_cols[0]:
-                    st.selectbox("Strategy Type", ["All"] + list(all_strategies_df["Type"].unique()))
-                
-                with filter_cols[1]:
-                    st.selectbox("Status", ["All", "Ready for Approval", "Below Threshold", "Approved", "Rejected"])
-                
-                with filter_cols[2]:
-                    st.selectbox("Sort By", ["Return", "Sharpe", "Drawdown", "Win Rate", "Trades"])
-                
-                with filter_cols[3]:
-                    st.selectbox("Order", ["Descending", "Ascending"])
-            
-            with strategy_tabs[2]:
-                # Historical performance of autonomous system
-                st.markdown("#### Autonomous System Performance History")
-                
-                # Create historical data
-                dates = pd.date_range(end=pd.Timestamp.now(), periods=12, freq='M')
-                
-                hist_data = {
-                    "Date": dates,
-                    "Strategies Generated": [8, 7, 11, 9, 12, 8, 7, 10, 11, 9, 10, 12],
-                    "Strategies Approved": [3, 2, 4, 3, 5, 2, 2, 4, 5, 3, 4, 5],
-                    "Avg Return (%)": [18.2, 15.7, 21.3, 17.8, 20.5, 16.9, 15.5, 19.2, 22.1, 18.5, 19.7, 22.8],
-                    "Avg Sharpe": [1.42, 1.35, 1.67, 1.51, 1.70, 1.44, 1.40, 1.55, 1.78, 1.52, 1.60, 1.75]
-                }
-                
-                hist_df = pd.DataFrame(hist_data)
-                
-                # Create chart
-                if PLOTLY_AVAILABLE:
-                    fig = go.Figure()
-        try:
-            get_news_for_search("market", limit=5)
-            st.success("Refreshed market news!")
-        except Exception as e:
-            st.error(f"Error refreshing: {str(e)}")
+    try:
+        get_news_for_search("market", limit=5)
+        st.success("Refreshed market news!")
+    except Exception as e:
+        st.error(f"Error refreshing: {str(e)}")
 
 # Update get_news_data to use get_news_for_search
 def get_news_data(query=None, provider=None):
@@ -2764,7 +2589,8 @@ with tab1:
         # AI predictions section
         st.markdown('<div class="sub-header">AI Market Predictions</div>', unsafe_allow_html=True)
         
-        col1, col2 = st.columns(2)
+        sentiment_cols = st.columns(2)
+
 try:
     from live_data_manager import LiveDataManager
     LIVE_DATA_MANAGER_AVAILABLE = True
@@ -2784,199 +2610,157 @@ if LIVE_DATA_MANAGER_AVAILABLE:
 if LIVE_DATA_MANAGER_AVAILABLE:
     live_data_manager.create_live_data_section(chart_library=go if PLOTLY_AVAILABLE else None)
 
-if news_data:
-    with sentiment_cols[0]:
-        for news in positive_news:
-            article_url = news.get("article_url", news.get("url", "#"))
-            clean_text = clean_summary(news.get("summary", ""))
-            time_ago = format_timestamp(news.get("timestamp", ""))
-            source = news.get('source', 'Unknown')
-            
-            # Generate trading impact
-            impact_data = generate_trading_impact(news)
-            
-            # Get image URL or fallback
-            image_url = news.get("image_url", "")
-            if not image_url:
-                image_url = get_fallback_image("Neutral", source)
-            
-            st.markdown(f"""
-<div style="height: 450px; overflow: hidden; margin-bottom: 15px; padding: 0; border-radius: 5px; border: 1px solid #ddd; border-left: 5px solid #2E7D32; background-color: white; position: relative;">
-<div style="height: 120px; overflow: hidden; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center;">
-<img src="{image_url}" style="max-width: 100%; max-height: 120px; object-fit: cover;" onerror="this.onerror=null; this.src='https://img.icons8.com/color/96/000000/up-trending.png';">
-</div>
-<div style="padding: 15px;">
-<div style="font-weight: bold; margin-bottom: 8px; height: 40px; overflow: hidden;">
-{news.get('title', 'No Title')}
-</div>
-<div style="color: #444; font-size: 14px; margin-bottom: 10px; line-height: 1.4; height: 60px; overflow: hidden;">
-{clean_text[:150]}{"..." if len(clean_text) > 150 else ""}
-</div>
-<div style="font-size: 13px; color: #2E7D32; background-color: #E8F5E9; padding: 10px; border-radius: 4px; margin-bottom: 10px; height: 135px; overflow-y: auto;">
-    <strong style="font-size: 14px;">STRATEGY: {impact_data.get('strategy', 'Bullish Position')}</strong><br>
-    <strong>Why:</strong> {impact_data.get('rationale', 'Positive sentiment')}<br>
-    <strong>How:</strong> {impact_data.get('implementation', 'Consider bullish positions')}<br>
-    <strong>Timeframe:</strong> {impact_data.get('timeframe', 'Short to medium-term')}<br>
-    <strong>Risk:</strong> {impact_data.get('risk_level', 'Moderate')}
-</div>
-<div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; position: absolute; bottom: 15px; left: 15px; right: 15px;">
-    <span>
-        <strong>{source}</strong> &bull; {time_ago}
-    </span>
-    <a href="{article_url}" target="_blank" style="color: #1E88E5; text-decoration: none; font-weight: bold;">
-        More
-    </a>
-</div>
-</div>
-</div>
-""", unsafe_allow_html=True)
+# Safely handle news data section
+try:
+    # Only attempt to get news if the function exists
+    if 'get_news_for_search' in globals():
+        news_data = get_news_for_search("market", limit=5)
+        
+        # Check if we have sentiment columns defined
+        if 'sentiment_cols' in locals() and news_data:
+            with sentiment_cols[0]:
+                st.subheader("Market News Impact")
+                st.write("Latest market news and potential impact on trading strategies.")
                 
-    with sentiment_cols[2]:
-        for news in negative_news:
-            article_url = news.get("article_url", news.get("url", "#"))
-            clean_text = clean_summary(news.get("summary", ""))
-            time_ago = format_timestamp(news.get("timestamp", ""))
-            source = news.get('source', 'Unknown')
-            
-            # Generate trading impact
-            impact_data = generate_trading_impact(news)
-            
-            # Get image URL or fallback
-            image_url = news.get("image_url", "")
-            if not image_url:
-                image_url = get_fallback_image("Negative", source)
-            
-            st.markdown(f"""
-<div style="height: 450px; overflow: hidden; margin-bottom: 15px; padding: 0; border-radius: 5px; border: 1px solid #ddd; border-left: 5px solid #C62828; background-color: white; position: relative;">
-    <div style="height: 120px; overflow: hidden; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center;">
-        <img src="{image_url}" style="max-width: 100%; max-height: 120px; object-fit: cover;" onerror="this.onerror=null; this.src='https://img.icons8.com/color/96/000000/down-trending.png';">
-    </div>
-    <div style="padding: 15px;">
-        <div style="font-weight: bold; margin-bottom: 8px; height: 40px; overflow: hidden;">
-            {news.get('title', 'No Title')}
-        </div>
-        <div style="color: #444; font-size: 14px; margin-bottom: 10px; line-height: 1.4; height: 60px; overflow: hidden;">
-            {clean_text[:150]}{"..." if len(clean_text) > 150 else ""}
-        </div>
-        <div style="font-size: 13px; color: #C62828; background-color: #FFEBEE; padding: 10px; border-radius: 4px; margin-bottom: 10px; height: 135px; overflow-y: auto;">
-            <strong style="font-size: 14px;">STRATEGY: {impact_data.get('strategy', 'Defensive Position')}</strong><br>
-            <strong>Why:</strong> {impact_data.get('rationale', 'Negative sentiment')}<br>
-            <strong>How:</strong> {impact_data.get('implementation', 'Consider hedging or reducing exposure')}<br>
-            <strong>Timeframe:</strong> {impact_data.get('timeframe', 'Short to medium-term')}<br>
-            <strong>Risk:</strong> {impact_data.get('risk_level', 'Moderate to High')}
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; position: absolute; bottom: 15px; left: 15px; right: 15px;">
-            <span>
-                <strong>{source}</strong> &bull; {time_ago}
-            </span>
-            <a href="{article_url}" target="_blank" style="color: #1E88E5; text-decoration: none; font-weight: bold;">
-                More
-            </a>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-else:
-    # Search prompt if no results
-    st.markdown("""
-    <div class="metric-card">
-        <p>Use the search box above to find news about any company or ticker symbol.</p>
-        <p>For example, try searching for \"AAPL\", \"Microsoft\", \"Tesla\", or \"Cryptocurrency\".</p>
-    </div>
-    """, unsafe_allow_html=True)
+                # Display some simplified news without trying to process them further
+                for i, news in enumerate(news_data[:3]):
+                    st.markdown(f"**{news.get('title', 'Market Update')}**")
+                    st.write(f"Source: {news.get('source', 'Financial News')}")
+                    st.write("---")
+    else:
+        logger.info("News search function not available")
+except Exception as e:
+    logger.error(f"Error displaying news: {e}")
+    # Continue execution - don't let news errors stop the dashboard
+
+# Also check the other sentiment column for display if it exists
+try:
+    if 'sentiment_cols' in locals() and len(sentiment_cols) > 1:
+        with sentiment_cols[1]:
+            st.subheader("Market Analysis")
+            st.write("Summary of current market conditions.")
+            # Simple market analysis display
+            st.info("Market showing mixed signals with tech sector outperforming overall market.")
+            st.warning("Energy sector under pressure due to regulatory concerns.")
+            st.success("Consumer defensive stocks showing strength in current conditions.")
+except Exception as e:
+    logger.error(f"Error displaying market analysis: {e}")
+
+# Add additional safe market content display if we need to
+try:
+    # Add the last sentiment column if it exists
+    if 'sentiment_cols' in locals() and len(sentiment_cols) > 2:
+        with sentiment_cols[2]:
+            st.subheader("Market Alerts")
+            st.warning("New regulatory changes may impact trading in the energy sector")
+            st.error("Volatility warning: VIX above 30 - consider adjusting position sizes")
+            st.info("Earnings season starts next week - prepare for increased volatility")
+except Exception as e:
+    logger.error(f"Error displaying market alerts: {e}")
+
+# Display search guidance if we have the search box
+try:
+    if 'news_search' in locals() and not news_data:
+        st.info("Use the search box above to find news about any company or ticker symbol.")
+        st.markdown("For example, try searching for **AAPL**, **Microsoft**, **Tesla**, or **Cryptocurrency**")
+except Exception as e:
+    logger.error(f"Error displaying search guidance: {e}")
+
+# Create columns for the market dashboard widgets
+col1, col2 = st.columns(2)
+
 with col1:
     st.markdown("### Market Regime Forecast")
     
     # Try to get real market regime forecasts using the ML classifier
     try:
         if USING_REAL_COMPONENTS:
-            if USING_REAL_COMPONENTS:
-                # Get market regimes probabilities using the classifier
-                from trading_bot.ml.market_condition_classifier import MarketConditionClassifier
+            # Get market regimes probabilities using the classifier
+            from trading_bot.ml.market_condition_classifier import MarketConditionClassifier
+            
+            # Use SPY as proxy for broad market
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
+            
+            spy_data = data_provider.get_historical_data(["SPY"], start_date, end_date)
+            
+            if "SPY" in spy_data and not spy_data["SPY"].empty:
+                # Initialize classifier
+                classifier = MarketConditionClassifier(symbol="SPY")
                 
-                # Use SPY as proxy for broad market
-                end_date = datetime.now().strftime('%Y-%m-%d')
-                start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
+                # Make prediction with probabilities
+                prediction = classifier.predict(spy_data["SPY"], include_probabilities=True)
                 
-                spy_data = data_provider.get_historical_data(["SPY"], start_date, end_date)
-                
-                if "SPY" in spy_data and not spy_data["SPY"].empty:
-                    # Initialize classifier
-                    classifier = MarketConditionClassifier(symbol="SPY")
+                if "probabilities" in prediction:
+                    # Format the regime probabilities for display
+                    regimes = []
+                    probs = []
                     
-                    # Make prediction with probabilities
-                    prediction = classifier.predict(spy_data["SPY"], include_probabilities=True)
+                    # Map the regimes to more readable names
+                    regime_map = {
+                        "bullish_trend": "Bullish Trend",
+                        "bearish_trend": "Bearish Trend",
+                        "sideways": "Sideways/Consolidation",
+                        "high_volatility": "High Volatility",
+                        "low_volatility": "Low Volatility",
+                        "breakout": "Breakout",
+                        "breakdown": "Breakdown"
+                    }
                     
-                    if "probabilities" in prediction:
-                        # Format the regime probabilities for display
-                        regimes = []
-                        probs = []
-                        
-                        # Map the regimes to more readable names
-                        regime_map = {
-                            "bullish_trend": "Bullish Trend",
-                            "bearish_trend": "Bearish Trend",
-                            "sideways": "Sideways/Consolidation",
-                            "high_volatility": "High Volatility",
-                            "low_volatility": "Low Volatility",
-                            "breakout": "Breakout",
-                            "breakdown": "Breakdown"
-                        }
-                        
-                        # Get the top 4 probable regimes
-                        for regime, prob in sorted(prediction["probabilities"].items(), key=lambda x: x[1], reverse=True)[:4]:
-                            regimes.append(regime_map.get(regime, regime.replace("_", " ").title()))
-                            probs.append(prob)
-                        
-                        # Create the regime probability dataframe
-                        regime_data = {
-                            "Regime": regimes,
-                            "Probability": probs
-                        }
-                    else:
-                        # If no probabilities available, use mock data
-                        regime_data = {
-                            "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
-                            "Probability": [0.65, 0.20, 0.05, 0.10]
-                        }
+                    # Get the top 4 probable regimes
+                    for regime, prob in sorted(prediction["probabilities"].items(), key=lambda x: x[1], reverse=True)[:4]:
+                        regimes.append(regime_map.get(regime, regime.replace("_", " ").title()))
+                        probs.append(prob)
+                    
+                    # Create the regime probability dataframe
+                    regime_data = {
+                        "Regime": regimes,
+                        "Probability": probs
+                    }
                 else:
-                    # If no data available, use mock data
+                    # If no probabilities available, use mock data
                     regime_data = {
                         "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
                         "Probability": [0.65, 0.20, 0.05, 0.10]
                     }
             else:
-                # Use mock data if not using real components
+                # If no data available, use mock data
                 regime_data = {
                     "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
                     "Probability": [0.65, 0.20, 0.05, 0.10]
                 }
-        except Exception as e:
+        else:
+            # Use mock data if not using real components
+            regime_data = {
+                "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
+                "Probability": [0.65, 0.20, 0.05, 0.10]
+            }
+    except Exception as e:
             logger.error(f"Error getting market regime forecast: {e}")
             # Fallback to mock data
             regime_data = {
                 "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
                 "Probability": [0.65, 0.20, 0.05, 0.10]
             }
-        
-        # Create the bar chart
-        fig = px.bar(
-            regime_data,
-            y="Regime",
-            x="Probability",
-            orientation='h',
-            color="Probability",
-            color_continuous_scale=["#C62828", "#FFAB91", "#A5D6A7", "#2E7D32"],
-            title="Market Regime Probability (7-Day Forecast)"
-        )
-        
-        fig.update_layout(
-            xaxis_title="Probability",
-            yaxis_title="",
-            coloraxis_showscale=False
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+    
+    # Create the bar chart
+    fig = px.bar(
+        regime_data,
+        y="Regime",
+        x="Probability",
+        orientation='h',
+        color="Probability",
+        color_continuous_scale=["#C62828", "#FFAB91", "#A5D6A7", "#2E7D32"],
+        title="Market Regime Probability (7-Day Forecast)"
+    )
+    
+    fig.update_layout(
+        xaxis_title="Probability",
+        yaxis_title="",
+        coloraxis_showscale=False
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
         
 with col2:
         st.markdown("### Symbol Price Predictions")
@@ -3205,11 +2989,71 @@ with tab7:
                     }
                     st.session_state.last_events = []
                     
+                    # Initialize category-based event tracking
+                    # Map event types to categories
+                    st.session_state.event_categories = {
+                        "SYSTEM": [EventType.SYSTEM_START, EventType.SYSTEM_STOP, EventType.SYSTEM_ERROR, 
+                                  EventType.CONFIG_UPDATE, EventType.SCHEDULED_TASK, EventType.DAILY_SUMMARY,
+                                  EventType.SESSION_START, EventType.SESSION_END, EventType.MEMORY_CREATED,
+                                  EventType.MEMORY_UPDATED, EventType.MEMORY_CONSOLIDATED],
+                        "STRATEGY": [EventType.TECHNICAL_INDICATOR, EventType.PATTERN_DETECTED, EventType.REGIME_CHANGE,
+                                    EventType.ML_PREDICTION, EventType.LLM_ANALYSIS, EventType.SENTIMENT_UPDATE,
+                                    EventType.SIGNAL_GENERATED],
+                        "MARKET": [EventType.MARKET_DATA, EventType.CANDLE_CLOSE, EventType.PRICE_UPDATE,
+                                  EventType.VOLUME_SPIKE, EventType.TICK_DATA],
+                        "ORDER": [EventType.ORDER_CREATED, EventType.ORDER_UPDATED, EventType.ORDER_FILLED,
+                                 EventType.ORDER_CANCELED],
+                        "PORTFOLIO": [EventType.TRADE_CLOSED, EventType.POSITION_UPDATED, EventType.BALANCE_UPDATE,
+                                     EventType.MARGIN_CALL, EventType.RISK_LIMIT_BREACHED, EventType.RISK_LEVEL_CHANGED,
+                                     EventType.STOP_LOSS_TRIGGERED, EventType.TAKE_PROFIT_TRIGGERED]
+                    }
+                    
+                    # Initialize category-based counters
+                    st.session_state.category_counters = {
+                        category: 0 for category in st.session_state.event_categories.keys()
+                    }
+                    
+                    # Initialize category-based event lists
+                    st.session_state.category_events = {
+                        category: [] for category in st.session_state.event_categories.keys()
+                    }
+                    
                     st.success("✅ Event system components initialized successfully")
                 except Exception as e:
                     st.error(f"Failed to initialize event system: {e}")
             
-            # Display event system statistics
+            # Category-based event monitoring view
+            st.subheader("Event Categories")
+            category_cols = st.columns(5)
+            
+            category_icons = {
+                "SYSTEM": "⚙️",
+                "STRATEGY": "🧠",
+                "MARKET": "📊",
+                "ORDER": "🛒",
+                "PORTFOLIO": "💼"
+            }
+            
+            for i, category in enumerate(st.session_state.event_categories.keys()):
+                with category_cols[i]:
+                    st.markdown(f"### {category_icons[category]} {category}")
+                    st.metric("Events", st.session_state.category_counters[category])
+            
+            # Add tabs for category-based monitoring
+            category_tabs = st.tabs(list(st.session_state.event_categories.keys()))
+            
+            # Populate each category tab
+            for i, (category, tab) in enumerate(zip(st.session_state.event_categories.keys(), category_tabs)):
+                with tab:
+                    st.subheader(f"{category_icons[category]} {category} Events")
+                    if st.session_state.category_events[category]:
+                        st.dataframe(pd.DataFrame(st.session_state.category_events[category]), use_container_width=True)
+                    else:
+                        st.info(f"No {category} events recorded yet")
+            
+            # Original event system statistics
+            st.markdown("---")
+            st.subheader("Event System Details")
             col1, col2 = st.columns(2)
             
             with col1:
@@ -3309,24 +3153,41 @@ with tab7:
                     # Update counters
                     st.session_state.event_counters[event_type] += 1
                     
-                    # Add to recent events
-                    st.session_state.last_events.append({
+                    # Event details for tracking
+                    event_details = {
                         "timestamp": datetime.now().isoformat(),
                         "type": event_type,
                         "symbol": symbol,
                         "data": str(data)
-                    })
+                    }
+                    
+                    # Add to recent events
+                    st.session_state.last_events.append(event_details)
                     
                     # Keep only last 10 events
                     if len(st.session_state.last_events) > 10:
                         st.session_state.last_events = st.session_state.last_events[-10:]
+                    
+                    # Update category-based tracking
+                    for category, event_types in st.session_state.event_categories.items():
+                        for et in event_types:
+                            if selected_event_type == et:
+                                # Update category counter
+                                st.session_state.category_counters[category] += 1
+                                
+                                # Add to category events
+                                st.session_state.category_events[category].append(event_details)
+                                
+                                # Keep only last 10 events per category
+                                if len(st.session_state.category_events[category]) > 10:
+                                    st.session_state.category_events[category] = st.session_state.category_events[category][-10:]
                     
                     st.success(f"Event published: {event_type}")
                 except Exception as e:
                     st.error(f"Failed to publish event: {e}")
             
             # Show recent events
-            st.subheader("Recent Events")
+            st.subheader("All Recent Events")
             if st.session_state.last_events:
                 st.dataframe(pd.DataFrame(st.session_state.last_events), use_container_width=True)
             else:
@@ -4167,3 +4028,97 @@ with tab12:
         The trading launcher requires additional modules to be installed.
         Please make sure all required components are installed or contact support for assistance.
         """)
+
+with tab13:
+    st.markdown('<div class="sub-header">🤖 Autonomous Trading</div>', unsafe_allow_html=True)
+    
+    # Initialize and render the autonomous trading UI
+    if autonomous_ui_available:
+        # Create the autonomous UI instance
+        autonomous_ui = AutonomousUI()
+        
+        # Render the UI
+        autonomous_ui.render()
+    else:        
+        # Create columns for control panel and results display
+        auto_col1, auto_col2 = st.columns([1, 3])
+    
+        with auto_col1:
+            st.markdown("### Control Panel")
+            st.markdown("The system automatically selects stocks, generates strategies, and backtests them.")
+            
+            # Market scanning interval
+            scan_interval = st.selectbox(
+                "Market Scan Interval",
+                ["15 minutes", "30 minutes", "1 hour", "4 hours", "Daily"]
+            )
+            
+            # Trading style preference
+            trading_style = st.selectbox(
+                "Trading Style",
+                ["Balanced", "Conservative", "Aggressive", "Trend-Following", "Mean-Reversion"]
+            )
+            
+            # Max concurrent positions
+            max_positions = st.slider("Max Positions", 1, 10, 3)
+            
+            # Risk per trade
+            risk_per_trade = st.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0, 0.1)
+            
+            # Action buttons
+            if st.button("Start Autonomous Trading", key="start_auto"):
+                st.success("Autonomous trading started. The system will now scan markets and trade automatically.")
+                
+            if st.button("Pause Trading", key="pause_auto"):
+                st.info("Trading paused. The system will complete open trades but not open new positions.")
+            
+            if st.button("Stop & Close All", key="stop_auto"):
+                st.error("Trading stopped. All positions will be closed at market price.")
+        
+        with auto_col2:
+            st.markdown("### Autonomous System Status")
+            
+            # System status metrics
+            status_cols = st.columns(3)
+            
+            with status_cols[0]:
+                st.metric("System Status", "Active", "Online")
+            
+            with status_cols[1]:
+                st.metric("Active Strategies", "5", "2 ↑")
+            
+            with status_cols[2]:
+                st.metric("Performance (7d)", "+4.2%", "1.5%")
+            
+            # Current activity table
+            st.markdown("### Current Activity")
+            
+            activity_data = pd.DataFrame({
+                "Time": ["09:32:15", "09:15:22", "09:05:17", "08:45:03", "08:30:00"],
+                "Action": ["Buy Signal", "Market Scan", "Sell Signal", "Strategy Adjustment", "System Start"],
+                "Details": [
+                    "AAPL long position opened at $142.35",
+                    "Detected bullish pattern in tech sector",
+                    "MSFT position closed for 2.3% profit",
+                    "Reduced position sizing due to increased volatility",
+                    "Autonomous system initialized in Balanced mode"
+                ]
+            })
+            
+            st.dataframe(activity_data, use_container_width=True)
+            
+            # Next scheduled actions
+            st.markdown("### Scheduled Actions")
+            
+            scheduled_data = pd.DataFrame({
+                "Time": ["10:00:00", "10:15:00", "11:00:00", "12:30:00", "15:45:00"],
+                "Action": [
+                    "Market Scan",
+                    "Strategy Performance Review",
+                    "Market Scan",
+                    "Market Scan",
+                    "End-of-Day Position Review"
+                ]
+            })
+            
+            st.dataframe(scheduled_data, use_container_width=True)
