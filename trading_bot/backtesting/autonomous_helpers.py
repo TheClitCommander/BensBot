@@ -128,8 +128,13 @@ def fetch_market_indicators() -> Dict[str, Dict[str, Any]]:
         now = datetime.now()
         
         for ticker in tickers:
-            # Randomly assign age in minutes, some fresh, some stale
-            age_minutes = random.choice([1, 2, 3, 6, 10])
+            # Randomly assign age in minutes, with majority being fresh (<2 min)
+            # and only a small portion being stale (for testing error handling)
+            age_minutes = random.choices(
+                [0.5, 1, 1.5, 2, 3, 6, 10],
+                weights=[30, 30, 20, 10, 5, 3, 2],  # Higher weights for fresh data
+                k=1
+            )[0]
             
             indicators[ticker] = {
                 "price": round(random.uniform(50, 500), 2),
@@ -230,7 +235,10 @@ def get_symbol_indicators(symbol: str) -> Dict[str, float]:
             "rsi": random.uniform(20, 80),
             "vix": random.uniform(10, 35),
             "momentum": random.uniform(-1, 1),
-            "adx": random.uniform(0, 50)
+            "adx": random.uniform(0, 50),
+            "trend_strength": random.uniform(0, 1.0),
+            "mean_reversion": random.uniform(0, 1.0),
+            "volatility": random.uniform(0, 1.0)
         }
         
     except Exception as e:
@@ -241,7 +249,10 @@ def get_symbol_indicators(symbol: str) -> Dict[str, float]:
             "rsi": 50,
             "vix": 15,
             "momentum": 0,
-            "adx": 0
+            "adx": 0,
+            "trend_strength": 0.5,
+            "mean_reversion": 0.5,
+            "volatility": 0.5
         }
 
 def get_symbol_sentiment(symbol: str) -> Dict[str, Any]:

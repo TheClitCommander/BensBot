@@ -53,12 +53,28 @@ class TriggerRequest(BaseModel):
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-# Load API keys from config
+# Import typed settings
+from trading_bot.config.typed_settings import APISettings, TradingBotSettings, load_config
+
+# Load API keys from typed settings if available
+api_settings = None
+api_keys = ["test_key_1", "test_key_2"]  # Default fallback keys
+
 try:
-    from config import API_KEYS
-    api_keys = API_KEYS.get("market_intelligence_api", ["test_key_1", "test_key_2"])
-except ImportError:
-    api_keys = ["test_key_1", "test_key_2"]
+    config = load_config()
+    api_settings = config.api
+    if "market_intelligence_api" in api_settings.api_keys:
+        api_keys = api_settings.api_keys["market_intelligence_api"]
+    logger.info("Loaded API settings from typed config")
+except Exception as e:
+    # Try legacy config as fallback
+    try:
+        from config import API_KEYS
+        api_keys = API_KEYS.get("market_intelligence_api", api_keys)
+    except ImportError:
+        pass  # Use default fallback keys
+    logger.warning(f"Could not load typed API settings: {str(e)}. Using fallback.")
+    api_settings = APISettings()
 
 # Set up logging
 logger = logging.getLogger("MarketIntelligenceAPI")
@@ -76,10 +92,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with settings from config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify the allowed origins
+    allow_origins=api_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -114,34 +130,37 @@ async def rate_limit(request: Request, call_next):
     # In production, use Redis or another distributed cache
     client_ip = request.state.client_ip
     
-    # Check rate limit (simplified)
+    # Check rate limit using settings from config
     if not hasattr(app, "rate_limit_store"):
         app.rate_limit_store = {}
     
     current_time = time.time()
+    time_window = api_settings.rate_limit_period_seconds
+    max_requests = api_settings.rate_limit_requests
     
-    # Clean up old requests
+    # Clean up old entries
+    for ip in list(app.rate_limit_store.keys()):
+        if current_time - app.rate_limit_store[ip]["timestamp"] > time_window:
+            del app.rate_limit_store[ip]
+    
+    # Check current client
     if client_ip in app.rate_limit_store:
-        app.rate_limit_store[client_ip] = [
-            t for t in app.rate_limit_store[client_ip]
-            if current_time - t < 60  # Within the last minute
-        ]
+        entry = app.rate_limit_store[client_ip]
+        if entry["count"] >= max_requests:
+            if current_time - entry["timestamp"] <= time_window:
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": "Rate limit exceeded", "retry_after": time_window}
+                )
+        
+        # Update count
+        entry["count"] += 1
     else:
-        app.rate_limit_store[client_ip] = []
+        # New client
+        app.rate_limit_store[client_ip] = {"count": 1, "timestamp": current_time}
     
-    # Check rate limit
-    if len(app.rate_limit_store[client_ip]) >= 60:  # 60 requests per minute
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content={"detail": "Rate limit exceeded"}
-        )
-    
-    # Add this request
-    app.rate_limit_store[client_ip].append(current_time)
-    
-    # Call next middleware or route handler
-    response = await call_next(request)
-    return response
+    # Continue processing
+    return await call_next(request)
 
 # Routes
 @app.get("/")
@@ -420,4 +439,9 @@ async def trigger_action(
 # Run the FastAPI app with uvicorn if executed directly
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host=api_settings.host, 
+        port=api_settings.port,
+        debug=api_settings.debug
+    )

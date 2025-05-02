@@ -2,8 +2,27 @@ import os
 import json
 import logging
 import requests
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Union
+
+# Import tenacity for retry mechanisms
+try:
+    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
+    TENACITY_AVAILABLE = True
+except ImportError:
+    TENACITY_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("tenacity not available. Retry functionality will be disabled. Install with: pip install tenacity")
+
+# Import cachetools for better cache management
+try:
+    from cachetools import TTLCache
+    CACHETOOLS_AVAILABLE = True
+except ImportError:
+    CACHETOOLS_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("cachetools not available. Using simple dict cache instead. Install with: pip install cachetools")
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +31,19 @@ class TradierClient:
     Client for interacting with the Tradier Brokerage API
     
     Handles authentication, account data, market data and order execution
+    with robust error handling, retries, timeouts, and efficient caching
     """
     
     # API endpoints for sandbox and production
     SANDBOX_BASE_URL = "https://sandbox.tradier.com/v1"
     PRODUCTION_BASE_URL = "https://api.tradier.com/v1"
+    
+    # Default request timeout (seconds)
+    DEFAULT_TIMEOUT = 15
+    
+    # Rate limiting parameters
+    MAX_REQUESTS_PER_MINUTE = 60
+    RATE_LIMIT_COOLDOWN = 60  # seconds to wait when rate limited
     
     def __init__(self, api_key: str, account_id: str, sandbox: bool = True):
         """
@@ -39,15 +66,41 @@ class TradierClient:
         }
         
         # Cache for market data to reduce API calls
-        self.quote_cache = {}
-        self.quote_cache_expiry = {}
-        self.quote_cache_duration = 10  # seconds
+        if CACHETOOLS_AVAILABLE:
+            # Use TTLCache for automatic expiration
+            self.quote_cache = TTLCache(maxsize=1000, ttl=10)  # Cache up to 1000 symbols, 10s TTL
+            logger.info("Using TTLCache for quote caching")
+        else:
+            # Fallback to manual cache management
+            self.quote_cache = {}
+            self.quote_cache_expiry = {}
+            self.quote_cache_duration = 10  # seconds
+            logger.info("Using simple dict cache for quotes")
+        
+        # Track request timestamps for rate limiting
+        self.request_timestamps = []
         
         logger.info(f"Tradier client initialized for account {account_id} in {'sandbox' if sandbox else 'production'} mode")
     
-    def _make_request(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict:
+    def _check_rate_limits(self):
         """
-        Make a request to the Tradier API
+        Check and enforce rate limits.
+        Removes timestamps older than 1 minute and sleeps if too many recent requests.
+        """
+        now = time.time()
+        # Keep only timestamps from the last minute
+        self.request_timestamps = [t for t in self.request_timestamps if now - t < 60]
+        
+        # If approaching limit, sleep to avoid hitting the rate limit
+        if len(self.request_timestamps) >= self.MAX_REQUESTS_PER_MINUTE - 5:
+            sleep_time = 60 - (now - self.request_timestamps[0])
+            if sleep_time > 0:
+                logger.info(f"Approaching rate limit, sleeping for {sleep_time:.2f} seconds")
+                time.sleep(sleep_time)
+    
+    def _make_request_with_retry(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict:
+        """
+        Make a request to the Tradier API with retry logic
         
         Args:
             method: HTTP method (GET, POST, PUT, DELETE)
@@ -58,19 +111,186 @@ class TradierClient:
         Returns:
             API response as a dictionary
         """
+        # Implement basic rate limiting
+        self._check_rate_limits()
+        
+        # Track this request
+        self.request_timestamps.append(time.time())
+        
+        url = f"{self.base_url}{endpoint}"
+        
+        # Define retry parameters
+        max_attempts = 3
+        attempts = 0
+        last_error = None
+        
+        while attempts < max_attempts:
+            attempts += 1
+            try:
+                if method.upper() == "GET":
+                    response = requests.get(
+                        url, 
+                        headers=self.headers, 
+                        params=params, 
+                        timeout=self.DEFAULT_TIMEOUT
+                    )
+                elif method.upper() == "POST":
+                    response = requests.post(
+                        url, 
+                        headers=self.headers, 
+                        data=data, 
+                        timeout=self.DEFAULT_TIMEOUT
+                    )
+                elif method.upper() == "PUT":
+                    response = requests.put(
+                        url, 
+                        headers=self.headers, 
+                        data=data, 
+                        timeout=self.DEFAULT_TIMEOUT
+                    )
+                elif method.upper() == "DELETE":
+                    response = requests.delete(
+                        url, 
+                        headers=self.headers, 
+                        timeout=self.DEFAULT_TIMEOUT
+                    )
+                else:
+                    raise ValueError(f"Unsupported method: {method}")
+                
+                # Handle rate limiting with special handling for 429 responses
+                if response.status_code == 429:
+                    logger.warning(f"Rate limited by Tradier API (attempt {attempts}/{max_attempts}). ")
+                    if attempts < max_attempts:
+                        wait_time = self.RATE_LIMIT_COOLDOWN * attempts  # Exponential backoff
+                        logger.warning(f"Cooling down for {wait_time} seconds before retry.")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise TradierRateLimitError("Rate limited by Tradier API, max retries exceeded")
+                
+                # Check for HTTP errors
+                response.raise_for_status()
+                
+                # Parse JSON response
+                return response.json()
+                
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                # These errors are retryable
+                last_error = e
+                if attempts < max_attempts:
+                    wait_time = 2 ** attempts  # Exponential backoff: 2, 4, 8...
+                    logger.warning(f"Retryable error on attempt {attempts}/{max_attempts}: {str(e)}. ")
+                    logger.warning(f"Retrying in {wait_time} seconds.")
+                    time.sleep(wait_time)
+                else:
+                    error_msg = f"Failed after {max_attempts} attempts: {str(e)}"
+                    logger.error(error_msg)
+                    raise TradierAPIError(error_msg) from e
+            except requests.exceptions.HTTPError as e:
+                error_msg = f"HTTP error making request to Tradier API: {str(e)}"
+                logger.error(error_msg)
+                
+                # Try to parse error response if available
+                try:
+                    error_details = e.response.json()
+                    logger.error(f"Tradier API error details: {json.dumps(error_details)}")
+                except:
+                    pass
+                    
+                # Only retry 5xx errors, not 4xx
+                if e.response.status_code >= 500 and attempts < max_attempts:
+                    wait_time = 2 ** attempts
+                    logger.warning(f"Server error, retrying in {wait_time} seconds.")
+                    time.sleep(wait_time)
+                else:
+                    raise TradierAPIError(error_msg) from e
+            except Exception as e:
+                error_msg = f"Error making request to Tradier API: {str(e)}"
+                logger.error(error_msg)
+                raise TradierAPIError(error_msg) from e
+        
+        # If we reach here, we've exhausted all retries
+        if last_error:
+            error_msg = f"All retry attempts failed: {str(last_error)}"
+            logger.error(error_msg)
+            raise TradierAPIError(error_msg) from last_error
+    
+    def _make_request(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict:
+        """
+        Make a request to the Tradier API with retries, timeouts and rate limiting
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            endpoint: API endpoint (without base URL)
+            params: Query parameters (for GET requests)
+            data: Form data (for POST requests)
+            
+        Returns:
+            API response as a dictionary
+        """
+        # If tenacity is available, use it for retry logic
+        if TENACITY_AVAILABLE:
+            return self._make_request_with_tenacity(method, endpoint, params, data)
+        else:
+            # Fall back to simple retry implementation
+            return self._make_request_with_retry(method, endpoint, params, data)
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((requests.exceptions.ConnectionError, requests.exceptions.Timeout)),
+        reraise=True
+    )
+    def _make_request_with_tenacity(self, method: str, endpoint: str, params: Dict = None, data: Dict = None) -> Dict:
+        """
+        Make a request to the Tradier API with tenacity retry library
+        Only used if tenacity is available
+        """
+        # Implement basic rate limiting
+        self._check_rate_limits()
+        
+        # Track this request
+        self.request_timestamps.append(time.time())
+        
         url = f"{self.base_url}{endpoint}"
         
         try:
             if method.upper() == "GET":
-                response = requests.get(url, headers=self.headers, params=params)
+                response = requests.get(
+                    url, 
+                    headers=self.headers, 
+                    params=params, 
+                    timeout=self.DEFAULT_TIMEOUT
+                )
             elif method.upper() == "POST":
-                response = requests.post(url, headers=self.headers, data=data)
+                response = requests.post(
+                    url, 
+                    headers=self.headers, 
+                    data=data, 
+                    timeout=self.DEFAULT_TIMEOUT
+                )
             elif method.upper() == "PUT":
-                response = requests.put(url, headers=self.headers, data=data)
+                response = requests.put(
+                    url, 
+                    headers=self.headers, 
+                    data=data, 
+                    timeout=self.DEFAULT_TIMEOUT
+                )
             elif method.upper() == "DELETE":
-                response = requests.delete(url, headers=self.headers)
+                response = requests.delete(
+                    url, 
+                    headers=self.headers, 
+                    timeout=self.DEFAULT_TIMEOUT
+                )
             else:
                 raise ValueError(f"Unsupported method: {method}")
+            
+            # Handle rate limiting with special handling for 429 responses
+            if response.status_code == 429:
+                logger.warning(f"Rate limited by Tradier API. Cooling down for {self.RATE_LIMIT_COOLDOWN} seconds.")
+                time.sleep(self.RATE_LIMIT_COOLDOWN)
+                # This will be retried by the @retry decorator
+                raise TradierRateLimitError("Rate limited by Tradier API")
             
             # Check for HTTP errors
             response.raise_for_status()
@@ -84,12 +304,17 @@ class TradierClient:
             
             # Try to parse error response if available
             try:
-                error_details = e.response.json()
-                logger.error(f"Tradier API error details: {json.dumps(error_details)}")
+                if hasattr(e, 'response') and e.response is not None:
+                    error_details = e.response.json()
+                    logger.error(f"Tradier API error details: {json.dumps(error_details)}")
             except:
                 pass
                 
-            raise TradierAPIError(error_msg)
+            # Re-raise as custom exception
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 429:
+                raise TradierRateLimitError(error_msg) from e
+            else:
+                raise TradierAPIError(error_msg) from e
     
     # --- Account Methods ---
     
@@ -196,9 +421,9 @@ class TradierClient:
     
     # --- Market Data Methods ---
     
-    def get_quotes(self, symbols: Union[str, List[str]], greeks: bool = False) -> Dict:
+    def get_quotes(self, symbols: Union[str, List[str]], greeks: bool = False) -> Dict[str, Dict]:
         """
-        Get quotes for multiple symbols
+        Get quotes for multiple symbols with TTL caching
         
         Args:
             symbols: Single symbol or list of symbols
@@ -207,57 +432,77 @@ class TradierClient:
         Returns:
             Dictionary of quotes keyed by symbol
         """
-        # Convert symbols to comma-separated string if list
-        if isinstance(symbols, list):
-            symbols_str = ",".join(symbols)
-        else:
-            symbols_str = symbols
+        # Convert single symbol to list
+        if isinstance(symbols, str):
+            symbols = [symbols]
         
-        # Check cache first
-        current_time = datetime.now()
+        # Return empty dict if no symbols
+        if not symbols:
+            return {}
+        
+        # Check which symbols are in cache and which need to be fetched
+        now = datetime.now().timestamp()
         cached_quotes = {}
-        missing_symbols = []
+        symbols_to_fetch = []
         
-        for symbol in symbols_str.split(","):
-            if symbol in self.quote_cache and self.quote_cache_expiry.get(symbol, datetime.min) > current_time:
-                # Use cached quote
-                cached_quotes[symbol] = self.quote_cache[symbol]
-            else:
-                # Need to fetch this symbol
-                missing_symbols.append(symbol)
+        # Handle different cache implementations
+        if CACHETOOLS_AVAILABLE:
+            # Using TTLCache - expiration is automatic
+            for symbol in symbols:
+                if symbol in self.quote_cache:
+                    cached_quotes[symbol] = self.quote_cache[symbol]
+                else:
+                    symbols_to_fetch.append(symbol)
+        else:
+            # Using manual cache expiration
+            for symbol in symbols:
+                if symbol in self.quote_cache and symbol in self.quote_cache_expiry:
+                    # If cache valid, use it
+                    if now - self.quote_cache_expiry[symbol] < self.quote_cache_duration:
+                        cached_quotes[symbol] = self.quote_cache[symbol]
+                    else:
+                        symbols_to_fetch.append(symbol)
+                else:
+                    symbols_to_fetch.append(symbol)
         
-        # If all quotes are cached, return them
-        if not missing_symbols:
+        # If all symbols in cache, return cached quotes
+        if not symbols_to_fetch:
             return cached_quotes
         
-        # Otherwise, fetch the missing quotes
+        # Fetch quotes for uncached symbols
         endpoint = "/markets/quotes"
         params = {
-            "symbols": ",".join(missing_symbols),
+            "symbols": ",".join(symbols_to_fetch),
             "greeks": "true" if greeks else "false"
         }
         
-        response = self._make_request("GET", endpoint, params=params)
-        quotes_data = response.get("quotes", {})
-        
-        # If no quotes, return empty dict or cached quotes
-        if quotes_data == "null" or not quotes_data:
+        try:
+            response = self._make_request("GET", endpoint, params=params)
+            quotes_data = response.get("quotes", {})
+            quotes = quotes_data.get("quote", [])
+            
+            # Handle single quote result
+            if isinstance(quotes, dict):
+                quotes = [quotes]
+            
+            # Process quotes and update cache
+            for quote in quotes:
+                symbol = quote.get("symbol")
+                if symbol:
+                    cached_quotes[symbol] = quote
+                    
+                    # Update cache based on implementation
+                    if CACHETOOLS_AVAILABLE:
+                        self.quote_cache[symbol] = quote
+                    else:
+                        self.quote_cache[symbol] = quote
+                        self.quote_cache_expiry[symbol] = now
+            
             return cached_quotes
-        
-        quotes = quotes_data.get("quote", [])
-        # If there's only one quote, the API returns it as a dict, not a list
-        if isinstance(quotes, dict):
-            quotes = [quotes]
-        
-        # Update cache and add to results
-        cache_expiry = current_time + timedelta(seconds=self.quote_cache_duration)
-        for quote in quotes:
-            symbol = quote.get("symbol")
-            if symbol:
-                self.quote_cache[symbol] = quote
-                self.quote_cache_expiry[symbol] = cache_expiry
-                cached_quotes[symbol] = quote
-        
+            
+        except Exception as e:
+            logger.error(f"Error fetching quotes: {str(e)}")
+            return cached_quotes
         return cached_quotes
     
     def get_quote(self, symbol: str, greeks: bool = False) -> Dict:
@@ -672,3 +917,7 @@ class TradierClient:
 class TradierAPIError(Exception):
     """Exception raised when Tradier API returns an error"""
     pass 
+
+class TradierRateLimitError(TradierAPIError):
+    """Exception raised when Tradier API rate limits are exceeded"""
+    pass

@@ -4,16 +4,34 @@ User authentication models.
 
 import os
 import bcrypt
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 import jwt
 from pydantic import BaseModel, EmailStr, Field, validator
 import uuid
 
+# Import typed settings
+from trading_bot.config.typed_settings import APISettings, TradingBotSettings, load_config
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+# Load API settings if available
+api_settings = None
+try:
+    config = load_config()
+    api_settings = config.api
+    logger.debug("Loaded API settings from typed config")
+except Exception as e:
+    logger.warning(f"Could not load typed API settings: {str(e)}. Using defaults.")
+    api_settings = APISettings()
+
 # Secret key for JWT tokens - load from environment variable
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "YOUR_SECRET_KEY_CHANGE_ME")
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+# Use typed settings token expiry if available, otherwise fall back to env vars or defaults
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", str(api_settings.token_expiry_minutes if api_settings else 30)))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 

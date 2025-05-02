@@ -12,6 +12,9 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
+# Import typed settings
+from trading_bot.config.typed_settings import APISettings, TradingBotSettings, load_config
+
 from trading_bot.auth.models import (
     SECRET_KEY, JWT_ALGORITHM, 
     TokenData, UserInDB, UserCreate, UserResponse
@@ -20,10 +23,20 @@ from trading_bot.auth.models import (
 # Setup logging
 logger = logging.getLogger(__name__)
 
+# Load API settings if available
+api_settings = None
+try:
+    config = load_config()
+    api_settings = config.api
+    logger.info("Loaded API settings from typed config")
+except Exception as e:
+    logger.warning(f"Could not load typed API settings: {str(e)}. Using defaults.")
+    api_settings = APISettings()
+
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
-# Path to users database file
+# Path to users database file (try from config first, fall back to env var or default)
 USERS_DB_PATH = os.environ.get("USERS_DB_PATH", "data/users.json")
 
 # Ensure the directory exists

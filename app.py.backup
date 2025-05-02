@@ -1,208 +1,12 @@
 import streamlit as st
-from datetime import datetime
 
-# Set page configuration - TradingView-Style UI
+# Set page configuration - MUST be the first Streamlit command
 st.set_page_config(
-    page_title="TradingView Dashboard",
+    page_title="Trading Strategy Dashboard",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-from trading_bot.adapters.registry import AdapterRegistry
-
-# --- Top Navigation Bar ---
-tabs = st.tabs(["Chart", "Backtest", "Dashboard", "AI Lab"])
-
-# --- Shared State ---
-if "symbol" not in st.session_state:
-    st.session_state.symbol = "AAPL"
-if "timeframe" not in st.session_state:
-    st.session_state.timeframe = "1D"
-
-# --- Provider Dropdowns (wired to AdapterRegistry) ---
-news_providers = list(AdapterRegistry.NEWS_PROVIDERS.keys())
-data_providers = ["tradier", "alpaca", "alphavantage"]
-trading_providers = ["tradier", "alpaca"]
-ai_providers = list(AdapterRegistry.AI_PROVIDERS.keys())
-
-def get_adapter(adapter_type, provider):
-    if adapter_type == "news":
-        return AdapterRegistry.get_news_adapter(provider)
-    if adapter_type == "ai":
-        return AdapterRegistry.get_ai_adapter(provider)
-    # Extend for data/trading as needed
-
-# --- Tab 1: Chart Workspace ---
-with tabs[0]:
-    st.markdown("## Chart Workspace")
-    # Sidebar remains for watchlist, alerts, drawing tools
-    st.sidebar.markdown("### Watchlist")
-    st.sidebar.text_input("Add Symbol", key="add_symbol")
-    st.sidebar.markdown("### Alerts")
-    st.sidebar.button("New Alert")
-    st.sidebar.markdown("### Drawing Tools")
-    st.sidebar.button("Add Drawing")
-
-    # Main area split into two columns: left (chart & provider), right (order & positions)
-    left_col, right_col = st.columns([2, 1])
-
-    with left_col:
-        st.markdown("#### Data & Provider Selection")
-        with st.expander("Select Data Providers", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                news_provider = st.selectbox("News Provider", news_providers, key="news_provider")
-                trading_provider = st.selectbox("Trading Provider", trading_providers, key="trading_provider")
-            with col2:
-                data_provider = st.selectbox("Data Provider", data_providers, key="data_provider")
-                ai_provider = st.selectbox("AI Provider", ai_providers, key="ai_provider")
-        st.markdown(f"#### Chart: {st.session_state.symbol} ({st.session_state.timeframe})")
-        # Example: data = get_adapter("data", data_provider).get_realtime(st.session_state.symbol)
-        st.line_chart([1, 2, 3, 2, 4])  # Replace with real chart
-
-    with right_col:
-        st.markdown("#### Order Ticket")
-        with st.form("order_form"):
-            st.text_input("Order Symbol", value=st.session_state.symbol)
-            st.selectbox("Order Type", ["Buy", "Sell"])
-            st.number_input("Quantity", min_value=1, value=10)
-            submitted = st.form_submit_button("Submit Order")
-        st.markdown("#### Positions")
-        # Example: positions = get_adapter("trading", trading_provider).get_positions()
-        st.table({"Symbol": ["AAPL"], "Qty": [10], "P/L": [123.45]})
-
-# --- Tab 2: Backtest Workspace ---
-with tabs[1]:
-    st.markdown("## Backtester")
-    main_col, sidebar_col = st.columns([6, 1])
-    with sidebar_col:
-        st.markdown("### Navigation")
-        st.button("Dashboard", key="dashboard_btn_dash")
-        st.button("News/Prediction", key="news_btn_dash")
-        st.button("Backtester", key="backtester_btn_dash")
-        st.button("Papertrade", key="papertrade_btn_dash")
-        st.button("Live Trade", key="livetrade_btn_dash")
-    with main_col:
-        st.markdown("### Experimental Strategy")
-        st.info("Tesla @ $170 - Sell Call Spread 110 - Buy. Evidence and plan summarized here.")
-        st.markdown("---")
-        upper_col, lower_col = st.columns([2, 3])
-        with upper_col:
-            st.markdown("#### Que for Backtest")
-            st.write("NVDA\n(Queued for backtest)")
-        with lower_col:
-            st.markdown("#### Current Test / Pending")
-            st.write("Tesla performed with ... (show all stats)")
-            st.button("Adjust Strategy / Run Improvements")
-        st.markdown("---")
-        bottom_col1, bottom_col2, bottom_col3 = st.columns([2, 3, 2])
-        with bottom_col1:
-            st.markdown("#### Analysis & Proposed Change")
-            st.write("Show stats, allow adjustment, summarize changes.")
-        with bottom_col2:
-            st.markdown("#### Pending")
-            st.write("Show pending backtests or improvements.")
-        with bottom_col3:
-            st.markdown("#### Winning Strategies")
-            st.write("List best-performing strategies.")
-
-# --- Tab 3: Dashboard Workspace ---
-with tabs[2]:
-    st.markdown("## Dashboard")
-    main_col, sidebar_col = st.columns([6, 1])
-    with sidebar_col:
-        st.markdown("### Navigation")
-        st.button("Dashboard", key="dashboard_btn_dash")
-        st.button("News/Prediction", key="news_btn_dash")
-        st.button("Backtester", key="backtester_btn_dash")
-        st.button("Papertrade", key="papertrade_btn_dash")
-        st.button("Live Trade", key="livetrade_btn_dash")
-    with main_col:
-        # Top row: Live Portfolio | Recent Trades | Alerts & Messages
-        top_left, top_center, top_right = st.columns([2, 2, 2])
-        with top_left:
-            st.markdown("#### Live Portfolio")
-            st.line_chart([1, 2, 3, 2, 4])  # Placeholder for live portfolio chart
-        with top_center:
-            st.markdown("#### Recent Trades")
-            st.table({"Symbol": ["TSLA"], "Qty": [10], "Price": [195.05], "Date": ["05/20"], "Type": ["Buy"]})
-        with top_right:
-            st.markdown("#### Alerts & Messages")
-            st.write("- Alert: TSLA hit $200\n- Message: Order filled")
-        st.markdown("---")
-        # Bottom row: News & Projection of Current Live Trades and AI Chat Assistant
-        bottom_left, bottom_right = st.columns([2, 4])
-        with bottom_left:
-            st.markdown("#### AI Chat Assistant")
-            st.write(":robot_face: How can I help you?")
-        with bottom_right:
-            st.markdown("#### News & Projection of Current Live Trades")
-            st.write("TSLA @ 195.05 (05/20)\nSite: Article for sentiment & indicators for pros & layman term summary.")
-            st.info("Prediction: TSLA expected to rise 2.5% next week. Confidence: 70%.")
-
-# --- Tab 4: AI Lab Workspace ---
-with tabs[3]:
-    st.markdown("## AI Lab: Autonomous Trading Pipeline")
-    st.markdown("Run the full autonomous pipeline with news, sentiment, indicators, and strategy selection.")
-    
-    import pandas as pd
-    from trading_bot.core.data_hub import CentralDataHub
-    from trading_bot.core.strategy_registry import StrategyRegistry
-    from trading_bot.core.autonomous_orchestrator import AutonomousOrchestrator
-    from trading_bot.backtesting.data_integration import DataIntegrationLayer
-    from trading_bot.adapters.registry import AdapterRegistry
-    # --- Ensure .env is loaded for all API keys ---
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
-    finnhub_api_key = os.getenv("FINNHUB_API_KEY")
-    news_fetcher = AdapterRegistry.get_news_adapter("finnhub", api_key=finnhub_api_key)  # Example; make configurable if needed
-    from trading_bot.data.asset_indicators import AssetIndicatorSuite, AssetIndicatorConfig, AssetType
-    indicator_config = AssetIndicatorConfig(asset_type=AssetType.EQUITY)
-    indicator_calculator = AssetIndicatorSuite(config=indicator_config)
-    data_hub = CentralDataHub(news_fetcher, indicator_calculator)
-    orchestrator = AutonomousOrchestrator(data_hub)
-    
-    # Automatically run the autonomous pipeline with parameter optimization when the tab loads
-    import time
-    if 'autonomous_results' not in st.session_state or 'autonomous_last_run' not in st.session_state:
-        st.session_state['autonomous_results'] = []
-        st.session_state['autonomous_last_run'] = None
-
-    # Only rerun if not already run this session (or if you want to rerun every tab load, remove this check)
-    if st.session_state['autonomous_last_run'] is None:
-        with st.spinner("Running autonomous pipeline (parameter optimization in progress)..."):
-            results = orchestrator.run_pipeline(top_n=5, optimize_params=True)
-            st.session_state['autonomous_results'] = results
-            st.session_state['autonomous_last_run'] = time.strftime('%Y-%m-%d %H:%M:%S')
-            st.success("Autonomous pipeline complete!")
-    else:
-        st.info(f"Autonomous pipeline last run: {st.session_state['autonomous_last_run']}")
-
-    # TODO: For event-driven/scheduled execution, trigger pipeline here based on time, news, or market events
-    # e.g., use st.experimental_rerun() after a timer, or listen for external triggers
-    
-    # Display results if available
-    if st.session_state['autonomous_results']:
-        st.markdown("### Results Table")
-        results_df = pd.DataFrame(st.session_state['autonomous_results'])
-        st.dataframe(results_df, use_container_width=True)
-        st.markdown("### Best Candidates")
-        for r in st.session_state['autonomous_results']:
-            st.write(f"**{r['symbol']}** | Strategy: {r['strategy']} | Sharpe: {r['metrics'].get('sharpe_ratio', 'N/A')} | Return: {r['metrics'].get('total_return', 'N/A')} | Meets Benchmark: {r['meets_benchmark']}")
-        st.markdown(f"**Last Run:** {st.session_state['autonomous_last_run']}")
-
-# --- Floating Settings & Status (modal or sidebar) ---
-with st.sidebar.expander("⚙️ Settings & Status", expanded=False):
-    st.text_input("API Key (env or Vault)")
-    st.selectbox("Rate-Limit Fallback Order", news_providers)
-    st.number_input("Cache TTL (min)", value=30)
-    st.button("Clear Cache")
-    st.toggle("Dark Theme")
-
-st.markdown("---")
-st.markdown("Dashboard last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 import pandas as pd
 import numpy as np
@@ -215,6 +19,54 @@ except ImportError:
     st.warning("Plotly is not installed. Some visualizations may not be available.")
 from datetime import datetime, timedelta, timezone
 import os
+import uuid
+import json
+
+# Import modular strategy components
+try:
+    # Try to import full modular strategy components
+    from trading_bot.strategies.modular_strategy_system import ComponentType, MarketCondition
+    from trading_bot.strategies.components.component_registry import get_component_registry
+    from trading_bot.strategies.modular_strategy_integration import ModularStrategyFactory
+    from trading_bot.ui.modular_strategy_ui import ModularStrategyUI
+    from trading_bot.strategies.optimizer.component_optimizer import GridSearchOptimizer, RandomSearchOptimizer
+    from trading_bot.strategies.marketplace.component_marketplace import ComponentMarketplace
+    from trading_bot.strategies.analytics.component_analytics import ComponentAnalytics
+    modular_strategy_full = True
+except ImportError as e:
+    modular_strategy_full = False
+    logger.warning(f"Full modular strategy components not available: {e}")
+
+# Try simplified UI if full component system is not available
+try:
+    from trading_bot.ui.modular_strategy_simplified import ModularStrategySimplifiedUI
+    modular_strategy_simplified = True
+except ImportError as e:
+    modular_strategy_simplified = False
+    logger.warning(f"Simplified modular strategy UI not available: {e}")
+
+# Import marketplace UI components
+try:
+    from trading_bot.ui.marketplace_ui import MarketplaceUI
+    from trading_bot.marketplace.api.marketplace_api import MarketplaceAPI
+    from trading_bot.marketplace.api.security import SecurityManager
+    marketplace_ui_available = True
+    logger.info("Component marketplace UI loaded successfully")
+except ImportError as e:
+    marketplace_ui_available = False
+    logger.warning(f"Component marketplace UI not available: {e}")
+    
+# Import trading launcher UI
+try:
+    from trading_bot.ui.trading_launcher import TradingLauncher
+    trading_launcher_available = True
+    logger.info("Trading launcher UI loaded successfully")
+except ImportError as e:
+    trading_launcher_available = False
+    logger.warning(f"Trading launcher UI not available: {e}")
+    
+# Set overall availability flag    
+modular_strategy_available = modular_strategy_full or modular_strategy_simplified
 import sys
 import logging
 import json
@@ -227,6 +79,9 @@ import time
 from functools import lru_cache
 import random
 import math
+# NEW: For chat assistant
+import uuid
+from typing import List, Dict, Any, Tuple
 
 # Add parent directory to path to support imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -283,6 +138,63 @@ try:
     except ImportError as e:
         logger.warning(f"Error importing PsychologicalRiskManager: {e}")
         psychological_risk_available = False
+    # Import the optimizer components
+    try:
+        from trading_bot.ui.optimizer_ui import OptimizerUI
+        from trading_bot.ml_pipeline.optimizer_integration import OptimizerIntegration
+        from trading_bot.strategies.hybrid_strategy_optimizer import HybridStrategyOptimizer
+        optimizer_available = True
+        logger.info("Strategy optimizer components loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Error importing optimizer components: {e}")
+        optimizer_available = False
+        
+    # Import LLM integration components
+    try:
+        from trading_bot.llm_integration.integration import LLMTradingIntegration
+        from trading_bot.llm_integration.financial_llm_engine import LLMProvider
+        from trading_bot.llm_integration.memory_system import MemoryType
+        from trading_bot.llm_integration.reasoning_engine import ReasoningTask
+        llm_integration_available = True
+        logger.info("LLM integration components loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Error importing LLM integration components: {e}")
+        llm_integration_available = False
+    
+    # Import ML regime detector and other integration components
+    try:
+        from trading_bot.ml_pipeline.ml_regime_detector import MLRegimeDetector
+        from trading_bot.ml_pipeline.portfolio_optimizer import PortfolioOptimizer
+        from trading_bot.triggers.regime_change_notifier import RegimeChangeNotifier
+        from trading_bot.automated_trader import AutomatedTrader
+        integration_components_available = True
+        logger.info("ML regime detector and integration components loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Error importing integration components: {e}")
+        integration_components_available = False
+        
+    # Import event-driven architecture components
+    try:
+        from trading_bot.event_system import (
+            EventManager, EventBus, MessageQueue, ChannelManager,
+            QueueType, QueueBackend, Event, EventType
+        )
+        event_system_available = True
+        logger.info("Event-driven architecture components loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Error importing event-driven architecture components: {e}")
+        event_system_available = False
+    
+    # Import trading mode system components
+    try:
+        from trading_bot.trading_modes import (
+            BaseTradingMode, StandardTradingMode, Order, OrderType
+        )
+        trading_mode_available = True
+        logger.info("Trading mode system components loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Error importing trading mode components: {e}")
+        trading_mode_available = False
 
     # Set flag for using real components
     USING_REAL_COMPONENTS = True
@@ -339,6 +251,72 @@ try:
         
         def get_positions(self):
             """Get current positions"""
+            try:
+                response = requests.get(f"{self.base_url}/v2/positions", headers=self.headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.warning(f"Alpaca API positions request failed: {response.status_code}, {response.text}")
+                    return []
+            except Exception as e:
+                logger.error(f"Error getting Alpaca positions: {e}")
+                return []
+        
+        def get_bars(self, symbols, timeframe="1Day", limit=100):
+            """Get historical bar data for symbols"""
+            if isinstance(symbols, str):
+                symbols = [symbols]
+                
+            try:
+                # Format symbols for the API
+                symbols_param = ",".join(symbols)
+                
+                # Set up parameters
+                params = {
+                    "symbols": symbols_param,
+                    "timeframe": timeframe,
+                    "limit": limit
+                }
+                
+                # Make the request
+                response = requests.get(
+                    f"{self.data_url}/v2/stocks/bars", 
+                    headers=self.headers,
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Process and convert to pandas DataFrames
+                    result = {}
+                    if "bars" in data:
+                        for symbol, bars in data["bars"].items():
+                            if bars:
+                                df = pd.DataFrame(bars)
+                                # Rename columns to match our expected format
+                                df = df.rename(columns={
+                                    "t": "timestamp",
+                                    "o": "open",
+                                    "h": "high",
+                                    "l": "low",
+                                    "c": "close",
+                                    "v": "volume"
+                                })
+                                # Convert timestamp to datetime
+                                df["timestamp"] = pd.to_datetime(df["timestamp"])
+                                # Set timestamp as index
+                                df = df.set_index("timestamp")
+                                result[symbol] = df
+                    
+                    return result
+                else:
+                    logger.warning(f"Alpaca API bars request failed: {response.status_code}, {response.text}")
+                    return {}
+            except Exception as e:
+                logger.error(f"Error getting Alpaca bars: {e}")
+                return {}
+    
     # Initialize FinnHub client
     class FinnhubClient:
         def __init__(self, api_key):
@@ -434,10 +412,72 @@ except ImportError as e:
     logger.warning(f"Could not import required packages for API integration: {e}")
     EXTERNAL_APIS_AVAILABLE = False
 
+# Initialize LiveDataManager if available
+if LIVE_DATA_MANAGER_AVAILABLE:
+    live_data_manager = LiveDataManager()
+    # Check for auto-refresh
+    live_data_manager.check_auto_refresh()
+
 # Initialize global state
 if USING_REAL_COMPONENTS:
     # Initialize real portfolio state manager
     portfolio_state = PortfolioStateManager()
+    
+    # Initialize LLM integration if available
+    llm_trading = None
+    if 'llm_integration_available' in locals() and llm_integration_available and 'integration_components_available' in locals() and integration_components_available:
+        try:
+            # Get path to config file
+            config_path = os.path.join(current_dir, "config.py")
+            
+            # Initialize LLM integration
+            llm_trading = LLMTradingIntegration(
+                config_path=config_path,
+                enable_memory=True,
+                debug=False
+            )
+            
+            # Initialize integration components
+            ml_regime_detector = MLRegimeDetector()
+            portfolio_optimizer = PortfolioOptimizer()
+            regime_change_notifier = RegimeChangeNotifier()
+            automated_trader = AutomatedTrader()
+            
+            # Connect components
+            llm_trading.connect_existing_components(
+                ml_regime_detector=ml_regime_detector,
+                portfolio_optimizer=portfolio_optimizer,
+                regime_change_notifier=regime_change_notifier,
+                automated_trader=automated_trader
+            )
+            
+            # Set up memory consolidation task
+            def run_memory_consolidation():
+                """Run memory consolidation as a background task"""
+                while True:
+                    # Wait until market is closed (assuming US market hours)
+                    current_hour = datetime.now().hour
+                    if 4 <= current_hour <= 9:  # 4am to 9am ET (before market open)
+                        logger.info("Running memory consolidation...")
+                        try:
+                            llm_trading.memory_system.consolidate_memories()
+                            logger.info("Memory consolidation complete")
+                        except Exception as e:
+                            logger.error(f"Error during memory consolidation: {e}")
+                    # Sleep for 1 hour before checking again
+                    time.sleep(3600)
+            
+            # Start memory consolidation in a background thread
+            memory_thread = threading.Thread(
+                target=run_memory_consolidation,
+                daemon=True  # Thread will exit when main program exits
+            )
+            memory_thread.start()
+            
+            logger.info("LLM integration successfully initialized and connected")
+        except Exception as e:
+            logger.error(f"Error initializing LLM integration: {e}")
+            llm_integration_available = False
     
     # Initialize market data provider
     try:
@@ -462,7 +502,7 @@ if USING_REAL_COMPONENTS:
             strategies["Volatility Breakout"] = VolatilityBreakout()
         logger.info(f"Initialized {len(strategies)} trading strategies")
 
-# Add custom CSS
+# Add custom CSS - enhanced with card styles for LLM Insights
 st.markdown("""
 <style>
     .main-header {
@@ -2354,10 +2394,14 @@ with metric_cols[1]:
 with metric_cols[2]:
     st.metric(label="Max Drawdown", value=f"{avg_drawdown:.1f}%", delta=f"{delta_drawdown:.1f}%" if delta_drawdown != 0 else None, delta_color="inverse")
 with metric_cols[3]:
-    st.metric(label="Sharpe Ratio", value=f"{avg_sharpe:.2f}", delta=f"{delta_sharpe:.2f}" if delta_sharpe != 0 else None)
+    st.metric(label="Sharpe Ratio", value=f"{avg_sharpe:.2f}")
 
-# Create layout for main dashboard components with all the requested tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Dashboard", "Backtesting", "Paper Trading", "Strategy", "News/Prediction"])
+# Add live data section if available
+if LIVE_DATA_MANAGER_AVAILABLE:
+    live_data_manager.create_live_data_section(chart_library=go if PLOTLY_AVAILABLE else None)
+
+# Create tabs for different sections
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs(["Dashboard", "Portfolio", "News/Predictions", "Strategy Optimizer", "Backtester", "Settings", "Developer", "LLM Insights", "AI Chat", "Modular Strategy", "Component Marketplace", "Trading Control"])
 
 with tab1:
     # Portfolio Performance Chart (moved to top)
@@ -2536,13 +2580,12 @@ with tab1:
             "Strategy": ["Momentum", "Breakout", "Volatility", "Mean Reversion", "Momentum", "Trend Following", "Pairs Trading", "Mean Reversion"],
             "Confidence": [87, 92, 65, 78, 94, 83, 71, 89],
             "Entry Date": ["2023-04-10", "2023-04-09", "2023-04-08", "2023-04-07", "2023-04-06", "2023-04-05", "2023-04-04", "2023-04-03"],
-            "Status": ["Open", "Open", "Closed", "Closed", "Open", "Closed", "Open", "Closed"],
-            "P&L (%)": [2.3, 3.1, -1.2, 4.5, 6.2, 1.8, 0.9, 2.7]
         }
         
-col1, col2 = st.columns(2)
-    
-# Add this after the current imports at the top
+        # AI predictions section
+        st.markdown('<div class="sub-header">AI Market Predictions</div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
 try:
     from live_data_manager import LiveDataManager
     LIVE_DATA_MANAGER_AVAILABLE = True
@@ -2665,154 +2708,1283 @@ else:
 with col1:
     st.markdown("### Market Regime Forecast")
     
-    if USING_REAL_COMPONENTS:
-        # Get market regimes probabilities using the classifier
-        from trading_bot.ml.market_condition_classifier import MarketConditionClassifier
-        try:
-            # Use SPY as proxy for broad market
-            end_date = datetime.now().strftime('%Y-%m-%d')
-            start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
-            spy_data = data_provider.get_historical_data(["SPY"], start_date, end_date)
-            if "SPY" in spy_data and not spy_data["SPY"].empty:
-                # Initialize classifier
-                classifier = MarketConditionClassifier(symbol="SPY")
-        except Exception as e:
-            logger.error(f"Error fetching SPY data or initializing classifier: {e}")
-    
     # Try to get real market regime forecasts using the ML classifier
     try:
         if USING_REAL_COMPONENTS:
-            # Get market regimes probabilities using the classifier
-            # Map the regimes to more readable names is now closed
-            # Get the top 4 probable regimes
-            for regime, prob in sorted(prediction["probabilities"].items(), key=lambda x: x[1], reverse=True)[:4]:
-                regimes.append(regime_map.get(regime, regime.replace("_", " ").title()))
-                probs.append(prob)
-            # Create the regime probability dataframe
-            regime_data = {
-                "Regime": regimes,
-                "Probability": probs
-            }
-        else:
-            # If no probabilities available, use mock data
+            if USING_REAL_COMPONENTS:
+                # Get market regimes probabilities using the classifier
+                from trading_bot.ml.market_condition_classifier import MarketConditionClassifier
+                
+                # Use SPY as proxy for broad market
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
+                
+                spy_data = data_provider.get_historical_data(["SPY"], start_date, end_date)
+                
+                if "SPY" in spy_data and not spy_data["SPY"].empty:
+                    # Initialize classifier
+                    classifier = MarketConditionClassifier(symbol="SPY")
+                    
+                    # Make prediction with probabilities
+                    prediction = classifier.predict(spy_data["SPY"], include_probabilities=True)
+                    
+                    if "probabilities" in prediction:
+                        # Format the regime probabilities for display
+                        regimes = []
+                        probs = []
+                        
+                        # Map the regimes to more readable names
+                        regime_map = {
+                            "bullish_trend": "Bullish Trend",
+                            "bearish_trend": "Bearish Trend",
+                            "sideways": "Sideways/Consolidation",
+                            "high_volatility": "High Volatility",
+                            "low_volatility": "Low Volatility",
+                            "breakout": "Breakout",
+                            "breakdown": "Breakdown"
+                        }
+                        
+                        # Get the top 4 probable regimes
+                        for regime, prob in sorted(prediction["probabilities"].items(), key=lambda x: x[1], reverse=True)[:4]:
+                            regimes.append(regime_map.get(regime, regime.replace("_", " ").title()))
+                            probs.append(prob)
+                        
+                        # Create the regime probability dataframe
+                        regime_data = {
+                            "Regime": regimes,
+                            "Probability": probs
+                        }
+                    else:
+                        # If no probabilities available, use mock data
+                        regime_data = {
+                            "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
+                            "Probability": [0.65, 0.20, 0.05, 0.10]
+                        }
+                else:
+                    # If no data available, use mock data
+                    regime_data = {
+                        "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
+                        "Probability": [0.65, 0.20, 0.05, 0.10]
+                    }
+            else:
+                # Use mock data if not using real components
+                regime_data = {
+                    "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
+                    "Probability": [0.65, 0.20, 0.05, 0.10]
+                }
+        except Exception as e:
+            logger.error(f"Error getting market regime forecast: {e}")
+            # Fallback to mock data
             regime_data = {
                 "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
                 "Probability": [0.65, 0.20, 0.05, 0.10]
             }
-    except Exception as e:
-        logger.error(f"Error getting market regime forecast: {e}")
-        regime_data = {
-            "Regime": ["Bullish Trend", "Sideways/Consolidation", "Bearish Trend", "High Volatility"],
-            "Probability": [0.65, 0.20, 0.05, 0.10]
-        }
-
-    # Create regime probability bar chart
-    fig = px.bar(
-        regime_data,
-        x="Regime",
-        y="Probability",
-        orientation='h',
-        color="Probability",
-        color_continuous_scale=["#C62828", "#FFAB91", "#A5D6A7", "#2E7D32"],
-        title="Market Regime Probability (7-Day Forecast)"
-    )
-
-with col2:
-    st.markdown("### Symbol Price Predictions")
-    try:
-        from trading_bot.ml.price_prediction import PricePredictor
         
-        prediction_data = []
+        # Create the bar chart
+        fig = px.bar(
+            regime_data,
+            y="Regime",
+            x="Probability",
+            orientation='h',
+            color="Probability",
+            color_continuous_scale=["#C62828", "#FFAB91", "#A5D6A7", "#2E7D32"],
+            title="Market Regime Probability (7-Day Forecast)"
+        )
+        
+        fig.update_layout(
+            xaxis_title="Probability",
+            yaxis_title="",
+            coloraxis_showscale=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+with col2:
+        st.markdown("### Symbol Price Predictions")
+        
+        # Try to get real price predictions using ML model
         try:
-            for symbol in symbols:
+            if USING_REAL_COMPONENTS:
+                # Get list of symbols from portfolio
+                portfolio_data = get_portfolio_data()
+                symbols = list(portfolio_data.get("portfolio", {}).get("positions", {}).keys())
+                
+                # Add some major indices
+                symbols.extend(["SPY", "QQQ"])
+                
+                # Limit to 4 symbols for display
+                symbols = symbols[:4]
+                
                 try:
-                    # Get current price
-                    current_prices = data_provider.get_current_price([symbol])
-                    current_price = current_prices.get(symbol, None)
+                    # Try to import price prediction model
+                    # This is a placeholder - you'll need to implement or import your actual model
+                    from trading_bot.ml.price_prediction import PricePredictor
                     
-                    # Get historical data for model
-                    end_date = datetime.now().strftime('%Y-%m-%d')
-                    start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
-                    hist_data = data_provider.get_historical_data([symbol], start_date, end_date)
+                    # Initialize with real data
+                    prediction_data = []
+                    for symbol in symbols:
+                        try:
+                            # Get current price
+                            current_prices = data_provider.get_current_price([symbol])
+                            current_price = current_prices.get(symbol, None)
+                            
+                            # Get historical data for model
+                            end_date = datetime.now().strftime('%Y-%m-%d')
+                            start_date = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d')
+                            hist_data = data_provider.get_historical_data([symbol], start_date, end_date)
+                            
+                            if symbol in hist_data and not hist_data[symbol].empty and current_price is not None:
+                                # Make prediction (this is where your actual model would be used)
+                                predictor = PricePredictor(symbol=symbol)
+                                forecast = predictor.predict(hist_data[symbol], days=7)
+                                
+                                prediction = forecast.get("price", current_price * 1.01)  # Default to 1% increase
+                                confidence = forecast.get("confidence", 0.7) * 100
+                                
+                                prediction_data.append({
+                                    "Symbol": symbol,
+                                    "Current Price": f"${current_price:.2f}",
+                                    "7-Day Prediction": f"${prediction:.2f}",
+                                    "Change (%)": ((prediction / current_price) - 1) * 100,
+                                    "Confidence": confidence
+                                })
+                            else:
+                                # If missing data, use mock entry
+                                prediction_data.append({
+                                    "Symbol": symbol,
+                                    "Current Price": "$150.00",
+                                    "7-Day Prediction": "$153.75", 
+                                    "Change (%)": 2.5,
+                                    "Confidence": 70.0
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error predicting price for {symbol}: {e}")
+                            # Just continue to next symbol
                     
-                    if symbol in hist_data and not hist_data[symbol].empty and current_price is not None:
-                        # Make prediction (this is where your actual model would be used)
-                        predictor = PricePredictor(symbol=symbol)
-                        forecast = predictor.predict(hist_data[symbol], days=7)
-                        
-                        prediction = forecast.get("price", current_price * 1.01)  # Default to 1% increase
-                        confidence = forecast.get("confidence", 0.7) * 100
-                        
-                        prediction_data.append({
-                            "Symbol": symbol,
-                            "Current Price": f"${current_price:.2f}",
-                            "7-Day Prediction": f"${prediction:.2f}",
-                            "Change (%)": ((prediction / current_price) - 1) * 100,
-                            "Confidence": confidence
-                        })
-                    else:
-                        # If missing data, use mock entry
-                        prediction_data.append({
-                            "Symbol": symbol,
-                            "Current Price": "$150.00",
-                            "7-Day Prediction": "$153.75", 
-                            "Change (%)": 2.5,
-                            "Confidence": 70.0
-                        })
-                except Exception as e:
-                    st.warning(f"Price prediction model import error: {e}")
+                    # If we failed to get any real predictions, use mock data
+                    if not prediction_data:
+                        raise ValueError("No valid predictions generated")
+                
+                except (ImportError, ValueError) as e:
+                    logger.warning(f"Using simplified price prediction due to: {e}")
+                    
+                    # Use a simple time series forecast
+                    prediction_data = []
+                    for symbol in symbols:
+                        try:
+                            # Get current price
+                            current_prices = data_provider.get_current_price([symbol])
+                            current_price = current_prices.get(symbol, None)
+                            
+                            # Get historical data
+                            end_date = datetime.now().strftime('%Y-%m-%d')
+                            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+                            hist_data = data_provider.get_historical_data([symbol], start_date, end_date)
+                            
+                            if symbol in hist_data and not hist_data[symbol].empty and current_price is not None:
+                                # Simple trend continuation forecast
+                                close_prices = hist_data[symbol]['close'].values
+                                # Calculate average daily return
+                                daily_returns = np.diff(close_prices) / close_prices[:-1]
+                                avg_return = np.mean(daily_returns[-5:])  # Last 5 days
+                                
+                                # Forecast based on simple trend
+                                prediction = current_price * (1 + avg_return * 7)  # 7-day forecast
+                                confidence = 60 + np.random.uniform(0, 15)  # Lower confidence for simple model
+                                
+                                prediction_data.append({
+                                    "Symbol": symbol,
+                                    "Current Price": f"${current_price:.2f}",
+                                    "7-Day Prediction": f"${prediction:.2f}",
+                                    "Change (%)": ((prediction / current_price) - 1) * 100,
+                                    "Confidence": confidence
+                                })
+                            else:
+                                # If missing data, use mock entry
+                                current_price = np.random.uniform(100, 500)
+                                prediction = current_price * (1 + np.random.uniform(-0.05, 0.08))
+                                
+                                prediction_data.append({
+                                    "Symbol": symbol,
+                                    "Current Price": f"${current_price:.2f}",
+                                    "7-Day Prediction": f"${prediction:.2f}",
+                                    "Change (%)": ((prediction / current_price) - 1) * 100,
+                                    "Confidence": np.random.uniform(60, 90)
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error creating simple forecast for {symbol}: {e}")
+                            # Just continue to next symbol
+            else:
+                # Use mock prediction data if not using real components
+                symbols = ["AAPL", "MSFT", "TSLA", "SPY"]
+                
+                # Generate prediction data
+                prediction_data = []
+                for symbol in symbols:
+                    current_price = np.random.uniform(100, 500)
+                    prediction = current_price * (1 + np.random.uniform(-0.05, 0.08))
+                    
+                    prediction_data.append({
+                        "Symbol": symbol,
+                        "Current Price": f"${current_price:.2f}",
+                        "7-Day Prediction": f"${prediction:.2f}",
+                        "Change (%)": ((prediction / current_price) - 1) * 100,
+                        "Confidence": np.random.uniform(60, 95)
+                    })
         except Exception as e:
-            st.warning(f"Prediction error: {e}")
-            # If we failed to get any real predictions, use mock data
+            logger.error(f"Error generating price predictions: {e}")
+            # Fallback to mock prediction data
+            symbols = ["AAPL", "MSFT", "TSLA", "SPY"]
+            
+            # Generate prediction data
             prediction_data = []
             for symbol in symbols:
-                # Demo/mock fallback
+                current_price = np.random.uniform(100, 500)
+                prediction = current_price * (1 + np.random.uniform(-0.05, 0.08))
+                
                 prediction_data.append({
                     "Symbol": symbol,
-                    "Current Price": "$150.00",
-                    "7-Day Prediction": "$153.75", 
-                    "Change (%)": 2.5,
-                    "Confidence": 70.0
+                    "Current Price": f"${current_price:.2f}",
+                    "7-Day Prediction": f"${prediction:.2f}",
+                    "Change (%)": ((prediction / current_price) - 1) * 100,
+                    "Confidence": np.random.uniform(60, 95)
                 })
-            st.info("Using demo price prediction cards.")
-    except Exception as e:
-        logger.error(f"Error generating price predictions: {e}")
-        # Fallback to mock prediction data
-        symbols = ["AAPL", "MSFT", "TSLA", "SPY"]
-        prediction_data = []
-        for symbol in symbols:
-            current_price = np.random.uniform(100, 500)
-            prediction = current_price * (1 + np.random.uniform(-0.05, 0.08))
-            prediction_data.append({
-                "Symbol": symbol,
-                "Current Price": f"${current_price:.2f}",
-                "7-Day Prediction": f"${prediction:.2f}",
-                "Change (%)": ((prediction / current_price) - 1) * 100,
-                "Confidence": np.random.uniform(60, 95)
-            })
+        
+        # Create predictions dataframe
+        predictions_df = pd.DataFrame(prediction_data)
+        
+        # Style the predictions dataframe
+        def prediction_color(val, col_name):
+            if col_name == "Change (%)":
+                try:
+                    val = float(val)
+                    if val > 0:
+                        return f"color: green; font-weight: bold"
+                    elif val < 0:
+                        return f"color: red; font-weight: bold"
+                except:
+                    pass
+            return ""
+        
+        # Display the prediction table
+        styled_pred_df = predictions_df.style.apply(lambda x: [prediction_color(val, col) for val, col in zip(x, predictions_df.columns)], axis=1)
+        st.dataframe(styled_pred_df, use_container_width=True)
 
-    # Create predictions dataframe
-    predictions_df = pd.DataFrame(prediction_data)
-    # Style the predictions dataframe
-    def prediction_color(val, col_name):
-        if col_name == "Change (%)":
+with tab4:
+    st.header("Strategy Optimizer")
+    
+    if USING_REAL_COMPONENTS and optimizer_available:
+        # Initialize optimizer UI
+        optimizer_ui = OptimizerUI(config={
+            'data_folder': 'data',
+            'results_folder': 'optimization_results'
+        })
+        # Render the optimizer UI
+        optimizer_ui.render()
+    else:
+        st.warning("Strategy optimizer components are not available. Please check your installation.")
+        # Show placeholder UI
+        st.subheader("Strategy Parameter Optimization")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.selectbox("Strategy Type", ["Hybrid", "Momentum", "Mean Reversion", "Trend Following"])
+            st.selectbox("Optimization Method", ["Genetic Algorithm", "Bayesian", "Grid Search", "Random"])
+        with col2:
+            st.multiselect("Symbols", ["AAPL", "MSFT", "GOOGL", "AMZN"], default=["AAPL"])
+            st.multiselect("Timeframes", ["1m", "5m", "15m", "1h", "4h", "1D"], default=["1h", "4h"])
+        
+        st.button("Run Optimization", disabled=True)
+        st.info("This feature requires the optimizer components to be installed.")
+
+with tab7:
+    st.markdown('<div class="sub-header">🛠️ Developer</div>', unsafe_allow_html=True)
+    
+    # Create subtabs for different developer features
+    dev_tab1, dev_tab2, dev_tab3 = st.tabs(["Event System", "Trading Modes", "System Diagnostics"])
+    
+    with dev_tab1:
+        st.markdown("### Event-Driven Architecture")
+        
+        if USING_REAL_COMPONENTS and 'event_system_available' in locals() and event_system_available:
+            # Initialize EventManager and EventBus if not already in session state
+            if "event_manager" not in st.session_state:
+                try:
+                    st.session_state.event_manager = EventManager()
+                    st.session_state.event_bus = EventBus()
+                    st.session_state.message_queue = MessageQueue(queue_type=QueueType.PRIORITY)
+                    st.session_state.channel_manager = ChannelManager()
+                    
+                    # Create some sample channels for demonstration
+                    st.session_state.channel_manager.create_channel("market_data")
+                    st.session_state.channel_manager.create_channel("signals")
+                    st.session_state.channel_manager.create_channel("orders")
+                    st.session_state.channel_manager.create_channel("executions")
+                    
+                    # Initialize event counters in session state
+                    st.session_state.event_counters = {
+                        str(event_type): 0 for event_type in EventType
+                    }
+                    st.session_state.last_events = []
+                    
+                    st.success("✅ Event system components initialized successfully")
+                except Exception as e:
+                    st.error(f"Failed to initialize event system: {e}")
+            
+            # Display event system statistics
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Event Bus Status")
+                event_counts = st.session_state.event_counters
+                
+                # Convert to dataframe for display
+                event_df = pd.DataFrame({
+                    "Event Type": list(event_counts.keys()),
+                    "Count": list(event_counts.values())
+                })
+                
+                # Display event counts
+                st.dataframe(event_df, use_container_width=True)
+                
+                # Display registered handlers
+                st.subheader("Event Handlers")
+                handler_data = [
+                    {"Handler": h.__name__, "Priority": p, "Event Type": et.name if hasattr(et, "name") else str(et)}
+                    for et, handlers in st.session_state.event_bus._handlers.items()
+                    for p, h in handlers
+                ]
+                
+                if handler_data:
+                    st.dataframe(pd.DataFrame(handler_data), use_container_width=True)
+                else:
+                    st.info("No event handlers registered yet")
+            
+            with col2:
+                st.subheader("Message Queue Status")
+                # Display queue stats
+                message_queue = st.session_state.message_queue
+                queue_stats = {
+                    "Queue Type": message_queue.queue_type.name,
+                    "Backend": message_queue.backend.name,
+                    "Pending Messages": message_queue.size(),
+                    "Subscribers": len(message_queue._subscribers),
+                    "Max Size": message_queue._max_size
+                }
+                
+                # Display as JSON
+                st.json(queue_stats)
+                
+                # Channel system info
+                st.subheader("Channel System")
+                channel_manager = st.session_state.channel_manager
+                channels = channel_manager.get_all_channels()
+                
+                channel_data = [
+                    {"Channel": name, "Subscribers": len(channel.subscribers), "Messages": channel.message_count}
+                    for name, channel in channels.items()
+                ]
+                
+                if channel_data:
+                    st.dataframe(pd.DataFrame(channel_data), use_container_width=True)
+                else:
+                    st.info("No channels available")
+            
+            # Event publisher for testing
+            st.subheader("Event Publisher (Test)")
+            event_col1, event_col2, event_col3 = st.columns(3)
+            
+            with event_col1:
+                event_type = st.selectbox("Event Type", [et.name for et in EventType])
+            
+            with event_col2:
+                symbol = st.text_input("Symbol", "AAPL")
+            
+            with event_col3:
+                event_data = st.text_input("Event Data", "{\"price\": 150.0, \"volume\": 1000}")
+            
+            if st.button("Publish Event", key="publish_event"):
+                try:
+                    # Parse event data
+                    data = json.loads(event_data) if event_data else {}
+                    data["symbol"] = symbol
+                    
+                    # Create and publish event
+                    selected_event_type = EventType[event_type]
+                    
+                    if selected_event_type == EventType.MARKET_DATA:
+                        event = MarketDataEvent(symbol=symbol, data=data)
+                    elif selected_event_type == EventType.SIGNAL:
+                        event = SignalEvent(symbol=symbol, signal_type="TEST", data=data)
+                    elif selected_event_type == EventType.ORDER:
+                        event = OrderEvent(symbol=symbol, order_type="TEST", data=data)
+                    elif selected_event_type == EventType.RISK:
+                        event = RiskEvent(symbol=symbol, risk_type="TEST", data=data)
+                    elif selected_event_type == EventType.ANALYSIS:
+                        event = AnalysisEvent(symbol=symbol, analysis_type="TEST", data=data)
+                    else:
+                        event = Event(event_type=selected_event_type, data=data)
+                    
+                    # Publish to event bus
+                    st.session_state.event_bus.publish(event)
+                    
+                    # Update counters
+                    st.session_state.event_counters[event_type] += 1
+                    
+                    # Add to recent events
+                    st.session_state.last_events.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "type": event_type,
+                        "symbol": symbol,
+                        "data": str(data)
+                    })
+                    
+                    # Keep only last 10 events
+                    if len(st.session_state.last_events) > 10:
+                        st.session_state.last_events = st.session_state.last_events[-10:]
+                    
+                    st.success(f"Event published: {event_type}")
+                except Exception as e:
+                    st.error(f"Failed to publish event: {e}")
+            
+            # Show recent events
+            st.subheader("Recent Events")
+            if st.session_state.last_events:
+                st.dataframe(pd.DataFrame(st.session_state.last_events), use_container_width=True)
+            else:
+                st.info("No events published yet")
+        else:
+            st.warning("Event system components are not available. Please check your installation.")
+            # Basic event system explanation with placeholders
+            st.markdown("""
+            ### Event-Driven Architecture
+            The trading system is designed with a modern event-driven architecture which provides:
+            - Decoupled components communicating via events
+            - Parallel processing of market data and signals
+            - Real-time responsiveness via message queues
+            - Publish-subscribe channels for streaming data
+            
+            Install the event system components to enable these features.
+            """)
+    
+    with dev_tab2:
+        st.markdown("### Trading Mode System")
+        
+        if USING_REAL_COMPONENTS and 'trading_mode_available' in locals() and trading_mode_available:
+            # Initialize Trading Mode if not already in session state
+            if "trading_mode" not in st.session_state:
+                try:
+                    # Initialize with a standard trading mode
+                    st.session_state.trading_mode = StandardTradingMode()
+                    st.session_state.available_modes = ["StandardTradingMode"]
+                    st.success("✅ Trading mode initialized successfully")
+                except Exception as e:
+                    st.error(f"Failed to initialize trading mode: {e}")
+            
+            # Display trading mode configuration
+            st.subheader("Trading Mode Configuration")
+            mode_col1, mode_col2 = st.columns(2)
+            
+            with mode_col1:
+                selected_mode = st.selectbox("Trading Mode", st.session_state.available_modes)
+                order_sizing = st.selectbox("Position Sizing", ["Fixed", "Risk-Based", "Kelly", "Portfolio %"])
+                risk_per_trade = st.slider("Risk Per Trade (%)", 0.1, 5.0, 1.0, 0.1)
+            
+            with mode_col2:
+                signal_threshold = st.slider("Signal Threshold", 0.0, 1.0, 0.6, 0.05)
+                max_positions = st.number_input("Max Concurrent Positions", 1, 20, 5)
+                use_stop_loss = st.checkbox("Use Automatic Stop Loss", True)
+            
+            # Update trading mode if configuration changes
+            if st.button("Update Trading Mode", key="update_trading_mode"):
+                try:
+                    # Update trading mode configuration
+                    trading_mode = st.session_state.trading_mode
+                    trading_mode.update_configuration({
+                        "signal_threshold": signal_threshold,
+                        "max_positions": max_positions,
+                        "use_stop_loss": use_stop_loss,
+                        "risk_per_trade": risk_per_trade / 100,  # Convert to decimal
+                        "position_sizing": order_sizing.lower()
+                    })
+                    st.success("Trading mode updated successfully")
+                except Exception as e:
+                    st.error(f"Failed to update trading mode: {e}")
+            
+            # Display trading mode info
+            st.subheader("Trading Mode Status")
+            
+            # Show some basic stats about the trading mode
+            trading_mode = st.session_state.trading_mode
+            mode_stats = {
+                "Mode": selected_mode,
+                "Active": trading_mode.is_enabled if hasattr(trading_mode, "is_enabled") else True,
+                "Open Positions": len(trading_mode.positions) if hasattr(trading_mode, "positions") else 0,
+                "Pending Orders": len(trading_mode.pending_orders) if hasattr(trading_mode, "pending_orders") else 0,
+                "Last Signal": trading_mode.last_signal_time.isoformat() if hasattr(trading_mode, "last_signal_time") and trading_mode.last_signal_time else "N/A",
+                "Configuration": {
+                    "signal_threshold": signal_threshold,
+                    "max_positions": max_positions,
+                    "use_stop_loss": use_stop_loss,
+                    "risk_per_trade": risk_per_trade,
+                    "position_sizing": order_sizing
+                }
+            }
+            
+            # Display as JSON
+            st.json(mode_stats)
+            
+            # Order list
+            if hasattr(trading_mode, "pending_orders") and trading_mode.pending_orders:
+                st.subheader("Pending Orders")
+                order_data = [
+                    {
+                        "Symbol": order.symbol,
+                        "Type": order.order_type.name if hasattr(order.order_type, "name") else str(order.order_type),
+                        "Side": order.side,
+                        "Quantity": order.quantity,
+                        "Price": order.price
+                    }
+                    for order in trading_mode.pending_orders
+                ]
+                st.dataframe(pd.DataFrame(order_data), use_container_width=True)
+        else:
+            st.warning("Trading mode components are not available. Please check your installation.")
+            # Basic trading mode explanation with placeholders
+            st.markdown("""
+            ### Trading Mode System
+            The trading system uses a modular design with trading modes that:
+            - Separate signal generation from execution logic
+            - Provide consistent order and position management
+            - Integrate with risk management system
+            - Support multiple strategies and instruments
+            
+            Install the trading mode components to enable these features.
+            """)
+    
+    with dev_tab3:
+        st.markdown("### System Diagnostics")
+        
+        # System resources
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent()
+            memory_percent = psutil.virtual_memory().percent
+            disk_percent = psutil.disk_usage('/').percent
+            
+            # Display system resources
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("CPU Usage", f"{cpu_percent}%")
+            
+            with col2:
+                st.metric("Memory Usage", f"{memory_percent}%")
+            
+            with col3:
+                st.metric("Disk Usage", f"{disk_percent}%")
+        except ImportError:
+            cpu_percent = np.random.randint(10, 50)
+            memory_percent = np.random.randint(30, 70)
+            disk_percent = np.random.randint(40, 80)
+            
+            # Display placeholders
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("CPU Usage", f"{cpu_percent}%")
+            
+            with col2:
+                st.metric("Memory Usage", f"{memory_percent}%")
+            
+            with col3:
+                st.metric("Disk Usage", f"{disk_percent}%")
+            
+            st.info("Install psutil for real system metrics")
+        
+        # Event system metrics if available
+        if USING_REAL_COMPONENTS and 'event_system_available' in locals() and event_system_available and "event_bus" in st.session_state:
+            st.subheader("Event System Metrics")
+            
+            # Get metrics from event bus
+            event_bus = st.session_state.event_bus
+            
+            # Only show if metrics are available
+            if hasattr(event_bus, "_metrics"):
+                metrics = event_bus._metrics
+                
+                # Convert to dataframe for display
+                metrics_data = [
+                    {"Metric": key, "Value": value}
+                    for key, value in metrics.items()
+                ]
+                
+                if metrics_data:
+                    st.dataframe(pd.DataFrame(metrics_data), use_container_width=True)
+                else:
+                    st.info("No event metrics available yet")
+            else:
+                st.info("Event metrics not enabled in EventBus")
+            
+            # Show integration example
+            st.subheader("Integration Example")
+            if st.button("Run Integration Example", key="run_integration"):
+                try:
+                    # Import integration example
+                    from trading_bot.event_system.integration_example import run_example
+                    
+                    # Run example
+                    results = run_example(message_queue=st.session_state.message_queue,
+                                        channel_manager=st.session_state.channel_manager,
+                                        event_bus=st.session_state.event_bus,
+                                        max_iterations=5)
+                    
+                    # Show results
+                    st.success("Integration example executed successfully")
+                    st.json(results)
+                except Exception as e:
+                    st.error(f"Failed to run integration example: {e}")
+        
+        # Architecture diagram
+        st.subheader("Architecture Diagram")
+        st.markdown("""
+        ```
+        ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+        │  Market Data    │──────▶     Events      │──────▶    Strategies   │
+        │  Providers      │      │     Bus         │      │                 │
+        └─────────────────┘      └─────────────────┘      └────────┬────────┘
+                                        │  ▲                       │
+                                        │  │                       │
+                                        ▼  │                       ▼
+        ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+        │   Order         │◀─────│   Trading       │◀─────│    Signal       │
+        │   Execution     │      │   Modes         │      │    Generation   │
+        └─────────────────┘      └─────────────────┘      └─────────────────┘
+                                        │  ▲
+                                        │  │
+                                        ▼  │
+        ┌─────────────────┐      ┌─────────────────┐
+        │   Position      │◀─────▶│     Risk        │
+        │   Management    │      │    Management   │
+        └─────────────────┘      └─────────────────┘
+        ```
+        
+        This event-driven architecture provides:
+        - Decoupled components for better maintainability and testing
+        - Parallel processing for high-throughput data handling
+        - Real-time responsiveness for market events
+        - Enhanced scalability for future expansion
+        """)
+
+with tab8:
+    st.markdown('<div class="sub-header">🧠 LLM Insights</div>', unsafe_allow_html=True)
+    
+    if not USING_REAL_COMPONENTS or not 'llm_integration_available' in locals() or not llm_integration_available or not 'llm_trading' in locals() or not llm_trading:
+        st.warning("⚠️ LLM integration is not available. Please check your installation and configuration.")
+    else:
+        # Create columns for different insights
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Market Analysis section with card-based design
+            st.markdown('<div class="card dark-card"><h3>Market Analysis & Regime Detection</h3></div>', unsafe_allow_html=True)
+            
+            # Symbols to analyze (use watchlist or default set)
+            default_symbols = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+            symbols_to_analyze = st.multiselect(
+                "Select symbols to analyze",
+                default_symbols + ["TSLA", "META", "JPM", "V", "MA", "JNJ", "PG"],
+                default=default_symbols[:5]
+            )
+            
+            # Analysis button
+            if st.button("Generate Market Analysis", key="market_analysis_btn"):
+                with st.spinner("Analyzing market conditions..."):
+                    try:
+                        # Get market data for analysis
+                        market_data = {}
+                        
+                        # Use real data if available
+                        if 'market_data_provider' in locals() and market_data_provider:
+                            # Get data from provider
+                            for symbol in symbols_to_analyze:
+                                try:
+                                    market_data[symbol] = market_data_provider.get_historical_data(
+                                        symbol, "1d", limit=30
+                                    ).to_dict(orient="records")
+                                except Exception as e:
+                                    logger.error(f"Error getting data for {symbol}: {e}")
+                                    # Provide empty data structure
+                                    market_data[symbol] = []
+                        
+                        # Run analysis
+                        analysis = llm_trading.analyze_market_conditions_sync(
+                            symbols=symbols_to_analyze,
+                            market_data=market_data
+                        )
+                        
+                        # Display analysis results in a styled card
+                        confidence_color = "green" if analysis['confidence'] > 0.8 else "orange" if analysis['confidence'] > 0.6 else "red"
+                        st.markdown(f'''
+                            <div class="card dark-card">
+                                <h3>Analysis Results <span style="color:{confidence_color};">(Confidence: {analysis['confidence']:.2f})</span></h3>
+                                <div class="card-content">
+                                    {analysis['analysis']}
+                                </div>
+                            </div>
+                        ''', unsafe_allow_html=True)
+                        
+                        # Store in session state for persistence
+                        st.session_state.last_market_analysis = analysis
+                    except Exception as e:
+                        st.error(f"Error generating market analysis: {str(e)}")
+            
+            # Display last analysis if available
+            if hasattr(st.session_state, 'last_market_analysis'):
+                with st.expander("Last Analysis", expanded=False):
+                    st.markdown(st.session_state.last_market_analysis['analysis'])
+            
+            # News Impact Analysis
+            st.markdown('<div class="card dark-card"><h3>News Impact Analysis</h3></div>', unsafe_allow_html=True)
+            
+            # Symbol selection for news analysis
+            news_symbol = st.selectbox(
+                "Select symbol for news analysis",
+                ["SPY", "AAPL", "MSFT", "GOOGL", "AMZN"] + (symbols_to_analyze if symbols_to_analyze else [])
+            )
+            
+            # News headlines input
+            news_headlines = st.text_area(
+                "Enter news headlines (one per line)",
+                height=100,
+                help="Enter recent news headlines related to the selected symbol"
+            )
+            
+            if st.button("Analyze News Impact", key="news_impact_btn"):
+                if not news_headlines.strip():
+                    st.warning("Please enter at least one news headline")
+                else:
+                    with st.spinner("Analyzing news impact..."):
+                        try:
+                            # Split headlines into list
+                            headlines_list = [h.strip() for h in news_headlines.split('\n') if h.strip()]
+                            
+                            # Get price data if available
+                            price_data = None
+                            if 'market_data_provider' in locals() and market_data_provider:
+                                try:
+                                    price_data = market_data_provider.get_historical_data(
+                                        news_symbol, "1d", limit=10
+                                    ).to_dict(orient="records")
+                                except Exception as e:
+                                    logger.error(f"Error getting price data: {e}")
+                            
+                            # Run news impact analysis
+                            impact = llm_trading.analyze_news_impact_sync(
+                                symbol=news_symbol,
+                                news_headlines=headlines_list,
+                                price_data=price_data
+                            )
+                            
+                            # Display analysis results in a styled card
+                            st.markdown(f'''
+                                <div class="card dark-card">
+                                    <h3>Impact Analysis (Confidence: {impact['confidence']:.2f})</h3>
+                                    <div class="card-content">
+                                        {impact['analysis']}
+                                    </div>
+                                </div>
+                            ''', unsafe_allow_html=True)
+                            
+                            # Store in session state
+                            st.session_state.last_news_impact = impact
+                        except Exception as e:
+                            st.error(f"Error analyzing news impact: {str(e)}")
+        
+        with col2:
+            # Memory System Insights
+            st.markdown('<div class="card dark-card"><h3>Memory System</h3></div>', unsafe_allow_html=True)
+            
+            if llm_trading and hasattr(llm_trading, 'memory_system') and llm_trading.memory_system:
+                try:
+                    # Get memory summary
+                    memory_summary = llm_trading.get_memory_summary()
+                    
+                    # Display memory stats
+                    st.metric("Total Memories", sum(memory_summary['counts'].values()))
+                    
+                    # Memory distribution
+                    memory_counts = memory_summary['counts']
+                    st.markdown("### Memory Distribution")
+                    st.bar_chart(memory_counts)
+                    
+                    # Display memory samples
+                    if memory_summary['short_term_sample']:
+                        with st.expander("Short-term Memory Sample"):
+                            for item in memory_summary['short_term_sample']:
+                                st.markdown(f'''
+                                    <div class="mini-card dark-card">
+                                        <p><strong>Created:</strong> {item['created']}</p>
+                                        <p><strong>Content:</strong> {item['content']}</p>
+                                        <p><strong>Tags:</strong> {', '.join(item['tags'])}</p>
+                                    </div>
+                                ''', unsafe_allow_html=True)
+                    
+                    if memory_summary['medium_term_sample']:
+                        with st.expander("Medium-term Memory Sample"):
+                            for item in memory_summary['medium_term_sample']:
+                                st.markdown(f'''
+                                    <div class="mini-card dark-card">
+                                        <p><strong>Created:</strong> {item['created']}</p>
+                                        <p><strong>Content:</strong> {item['content']}</p>
+                                        <p><strong>Tags:</strong> {', '.join(item['tags'])}</p>
+                                    </div>
+                                ''', unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Error retrieving memory data: {str(e)}")
+            else:
+                st.info("Memory system not available")
+            
+            # Strategy Adjustments
+            st.markdown('<div class="card dark-card"><h3>Strategy Adjustments</h3></div>', unsafe_allow_html=True)
+            
+            if llm_trading and hasattr(llm_trading, 'strategy_enhancer') and llm_trading.strategy_enhancer:
+                try:
+                    # Get LLM insights for UI
+                    symbols_for_insights = symbols_to_analyze[:3] if symbols_to_analyze else ["SPY", "QQQ", "AAPL"]
+                    insights = llm_trading.get_llm_insights_for_ui(symbols_for_insights, "1d")
+                    
+                    if "strategy_adjustments" in insights and insights["strategy_adjustments"]:
+                        adjustments = insights["strategy_adjustments"]
+                        st.markdown(f"### Recent Adjustments ({len(adjustments)})")
+                        
+                        for adj in adjustments[:5]:  # Show up to 5 recent adjustments
+                            with st.expander(f"{adj['parameter']} ({adj['timestamp']})"):
+                                st.markdown(f'''
+                                    <div class="mini-card dark-card">
+                                        <p><strong>Type:</strong> {adj['type']}</p>
+                                        <p><strong>Change:</strong> {adj['old_value']} → {adj['new_value']}</p>
+                                        <p><strong>Confidence:</strong> {adj['confidence']:.2f}</p>
+                                        <p><strong>Reason:</strong> {adj['explanation']}</p>
+                                    </div>
+                                ''', unsafe_allow_html=True)
+                    else:
+                        st.info("No recent strategy adjustments")
+                except Exception as e:
+                    st.error(f"Error retrieving strategy adjustments: {str(e)}")
+            else:
+                st.info("Strategy enhancer not available")
+            
+            # Current Regime
+            st.markdown('<div class="card dark-card"><h3>Market Regime</h3></div>', unsafe_allow_html=True)
+            
+            if llm_trading and hasattr(llm_trading, "ml_regime_detector") and llm_trading.ml_regime_detector:
+                try:
+                    # Get current regime
+                    current_regime = llm_trading.ml_regime_detector.current_regime
+                    regime_confidence = llm_trading.ml_regime_detector.regime_confidence
+                    
+                    # Display regime with appropriate color
+                    regime_colors = {
+                        "bull": "green",
+                        "bear": "red",
+                        "neutral": "blue",
+                        "volatile": "orange",
+                        "sideways": "gray"
+                    }
+                    
+                    # Find matching color (partial match)
+                    color = "blue"
+                    for key, val in regime_colors.items():
+                        if key in current_regime.lower():
+                            color = val
+                            break
+                    
+                    st.markdown(f'''
+                        <div class="regime-indicator" style="color:{color}; font-size:24px; font-weight:bold;">
+                            Current Regime: {current_regime}
+                        </div>
+                    ''', unsafe_allow_html=True)
+                    st.progress(regime_confidence)
+                    st.text(f"Confidence: {regime_confidence:.2f}")
+                except Exception as e:
+                    st.error(f"Error retrieving regime data: {str(e)}")
+            else:
+                st.info("ML Regime Detector not available")
+
+with tab9:
+    st.markdown('<div class="sub-header">💬 AI Trading Assistant</div>', unsafe_allow_html=True)
+    
+    # Initialize chat history in session state if it doesn't exist
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+    
+    # Initialize user ID in session state
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = str(uuid.uuid4())
+    
+    # Function to generate AI responses based on query
+    def get_ai_response(query: str) -> str:
+        """Generate AI response based on user query."""
+        # Check if LLM integration is available
+        if USING_REAL_COMPONENTS and 'llm_integration_available' in locals() and llm_integration_available and 'llm_trading' in locals() and llm_trading:
             try:
-                val = float(val)
-                if val > 0:
-                    return f"color: green; font-weight: bold"
-                elif val < 0:
-                    return f"color: red; font-weight: bold"
-            except:
-                pass
-        return ""
-    # Display the prediction table
-    styled_pred_df = predictions_df.style.apply(lambda x: [prediction_color(val, col) for val, col in zip(x, predictions_df.columns)], axis=1)
-    st.dataframe(styled_pred_df, use_container_width=True)
+                logger.info("Using LLM integration for AI response")
+                # Portfolio information for context
+                portfolio_data = get_portfolio_data()
+                portfolio_value = portfolio_data.get("portfolio", {}).get("total_value", 0)
+                portfolio_cash = portfolio_data.get("portfolio", {}).get("cash", 0)
+                portfolio_positions = portfolio_data.get("portfolio", {}).get("positions", {})
+                performance = portfolio_data.get("performance_metrics", {})
+                
+                # Format portfolio info for LLM context
+                portfolio_context = f"User portfolio value: ${portfolio_value:,.2f}, Cash: ${portfolio_cash:,.2f}, "
+                portfolio_context += f"Return: {performance.get('cumulative_return', 0):.1f}%, Sharpe: {performance.get('sharpe_ratio', 0):.2f}, "
+                portfolio_context += f"Risk level: {risk_level}, Strategies: {', '.join(selected_strategies)}"
+                
+                # Format position info
+                position_context = "Positions: " + ", ".join([f"{symbol}: {pos.get('quantity', 0)} shares at ${pos.get('current_price', 0):.2f}" 
+                                    for symbol, pos in list(portfolio_positions.items())[:5]]) if portfolio_positions else "No open positions."
+                
+                # Use professional system message
+                system_message = """You are an institutional-grade AI trading assistant helping with portfolio management, strategy insights, and market analysis.
+                Provide professional, precise, and actionable advice. Use professional trading terminology.
+                Be concise but thorough. Include specific recommendations where appropriate.
+                Make your responses data-driven and evidence-based. Never make up information."""
+                
+                # Build context from multiple sources
+                context = f"{portfolio_context}\n\n{position_context}\n\n"
+                
+                # Add market regime context if available
+                if hasattr(llm_trading, "ml_regime_detector") and llm_trading.ml_regime_detector:
+                    try:
+                        regime = llm_trading.ml_regime_detector.current_regime
+                        confidence = llm_trading.ml_regime_detector.regime_confidence
+                        context += f"Current market regime: {regime} (confidence: {confidence:.2f})\n\n"
+                    except Exception as e:
+                        logger.warning(f"Failed to get regime info: {e}")
+                
+                # Add recent news context
+                try:
+                    recent_news = get_news_for_search("market", limit=2)
+                    if recent_news:
+                        context += "Recent market news:\n"
+                        for news in recent_news:
+                            context += f"- {news.get('title', '')} ({news.get('source', '')})\n"
+                    context += "\n"
+                except Exception as e:
+                    logger.warning(f"Failed to get news: {e}")
+                
+                # Add memory context if memory system is available
+                if hasattr(llm_trading, "memory_system") and llm_trading.memory_system:
+                    try:
+                        # Query memories relevant to user question
+                        memories = llm_trading.memory_system.query_memories(
+                            text_query=query,
+                            limit=3
+                        )
+                        if memories:
+                            context += "Relevant past insights:\n"
+                            for memory in memories:
+                                context += f"- {memory.content}\n"
+                            context += "\n"
+                    except Exception as e:
+                        logger.warning(f"Failed to query memory: {e}")
+                
+                # Format the prompt with context
+                prompt = f"""User Question: {query}
 
-# Footer
-st.markdown("---")
-st.markdown("Dashboard last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+Context Information:
+{context}
+
+Please provide a professional, actionable trading assistant response. Base your response on the available context and your knowledge of trading and finance."""
+                
+                # Generate response from LLM
+                llm_response = llm_trading.llm_engine.generate_sync(
+                    prompt=prompt,
+                    system_message=system_message,
+                    max_tokens=400  # Keep responses concise but detailed
+                )
+                
+                # Save interesting queries to memory system for future context
+                if hasattr(llm_trading, "memory_system") and llm_trading.memory_system:
+                    # Determine importance based on query content
+                    importance = 0.5  # Medium importance by default
+                    # Increase importance for strategy, risk, or market questions
+                    if any(term in query.lower() for term in ['strategy', 'risk', 'market', 'portfolio', 'performance']):
+                        importance = 0.7
+                    
+                    try:
+                        memory_content = f"User asked: {query}\n\nAssistant provided analysis: {llm_response.text[:200]}..."
+                        llm_trading.memory_system.add_memory(
+                            content=memory_content,
+                            memory_type="short_term",  # Use enum if available in actual code
+                            importance=importance,
+                            tags=["user_query", "ai_assistant"],
+                            source="dashboard_chat"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error saving chat to memory: {e}")
+                
+                return llm_response.text
+                
+            except Exception as e:
+                logger.error(f"Error getting LLM response: {e}")
+                logger.info("Falling back to rule-based response")
+                # Fall back to rule-based response
+                return get_rule_based_response(query)
+        else:
+            # Use rule-based responses if LLM integration is not available
+            return get_rule_based_response(query)
+    
+    def get_rule_based_response(query: str) -> str:
+        """Generate rule-based responses when LLM is not available"""
+        # Portfolio information
+        portfolio_data = get_portfolio_data()
+        portfolio_value = portfolio_data.get("portfolio", {}).get("total_value", 0)
+        portfolio_cash = portfolio_data.get("portfolio", {}).get("cash", 0)
+        portfolio_positions = portfolio_data.get("portfolio", {}).get("positions", {})
+        performance = portfolio_data.get("performance_metrics", {})
+        
+        # Basic response templates
+        portfolio_response = f"Your portfolio value is ${portfolio_value:,.2f} with ${portfolio_cash:,.2f} in cash. "
+        portfolio_response += f"Your cumulative return is {performance.get('cumulative_return', 0):.1f}% with a Sharpe ratio of {performance.get('sharpe_ratio', 0):.2f}."
+        
+        positions_response = "Your current positions: " + ", ".join([f"{symbol}: {pos.get('quantity', 0)} shares at ${pos.get('current_price', 0):.2f}" 
+                                                               for symbol, pos in list(portfolio_positions.items())[:3]])
+        
+        strategy_response = f"Your selected strategies are: {', '.join(selected_strategies)}. "
+        strategy_response += f"Your current risk level is set to {risk_level}."
+        
+        market_news = "Recent market news: " + get_news_for_search("market", limit=1)[0].get("title", "No recent news") if get_news_for_search("market", limit=1) else "No recent news available."
+        
+        # Generic responses for common queries
+        responses = {
+            "help": "I can help you with:\n- Portfolio information\n- Trading strategies\n- Market insights\n- Risk management\n- Performance analysis\nJust ask a question!",
+            "greeting": ["Hello! How can I help with your trading today?", "Hi there! What would you like to know about your portfolio?", "Welcome back! How's your trading day going?"],
+            "portfolio": [portfolio_response, f"Your portfolio has a total value of ${portfolio_value:,.2f}. How can I help you manage it?"],
+            "positions": [positions_response],
+            "strategy": [strategy_response, f"You're currently using {len(selected_strategies)} strategies with {risk_level} risk."],
+            "performance": [f"Your portfolio performance: {performance.get('cumulative_return', 0):.1f}% return, {performance.get('sharpe_ratio', 0):.2f} Sharpe ratio, and {performance.get('max_drawdown', 0):.1f}% maximum drawdown."],
+            "market": [market_news],
+            "risk": [f"Your risk level is set to {risk_level}. This affects your position sizing and strategy allocations."],
+            "thanks": ["You're welcome! Anything else you need help with?", "Happy to help! Any other questions about your trading?"]
+        }
+        
+        # Clean and lowercase the query for matching
+        clean_query = query.lower().strip()
+        
+        # Try to match the query to a response category
+        if any(word in clean_query for word in ["hi", "hello", "hey", "morning", "afternoon", "evening"]):
+            return random.choice(responses["greeting"])
+        elif any(word in clean_query for word in ["help", "assist", "support", "guide", "what can you do"]):
+            return responses["help"]
+        elif any(word in clean_query for word in ["portfolio", "holdings", "account", "balance", "value"]):
+            return random.choice(responses["portfolio"])
+        elif any(word in clean_query for word in ["position", "stocks", "shares", "holding", "own"]):
+            return random.choice(responses["positions"])
+        elif any(word in clean_query for word in ["strategy", "strategies", "approach", "method", "trading style"]):
+            return random.choice(responses["strategy"])
+        elif any(word in clean_query for word in ["performance", "return", "profit", "loss", "gain", "sharpe", "drawdown"]):
+            return random.choice(responses["performance"])
+        elif any(word in clean_query for word in ["market", "news", "events", "economy", "index", "indices"]):
+            return random.choice(responses["market"])
+        elif any(word in clean_query for word in ["risk", "volatility", "exposure", "leverage", "hedging"]):
+            return random.choice(responses["risk"])
+        elif any(word in clean_query for word in ["thanks", "thank you", "appreciate", "helpful", "good job"]):
+            return random.choice(responses["thanks"])
+        elif "momentum" in clean_query:
+            return "Momentum strategy identifies securities with upward or downward trends and trades in the direction of these trends. It works well in trending markets but can struggle during reversals."
+        elif "mean reversion" in clean_query:
+            return "Mean Reversion strategy assumes asset prices will revert to their historical average over time. It looks for overbought/oversold conditions and trades counter to extreme moves."
+        elif "trend following" in clean_query:
+            return "Trend Following identifies longer-term market trends and positions accordingly. It typically uses longer timeframes than momentum strategies and aims to capture major market moves."
+        elif "volatility breakout" in clean_query:
+            return "Volatility Breakout strategy identifies periods of price consolidation and takes positions when price breaks out of the range, anticipating continued movement in the breakout direction."
+        else:
+            # Generic response when no specific match is found
+            responses = [
+                "I'm not sure I understand. Could you rephrase your question?",
+                f"I don't have specific information about that, but your portfolio value is ${portfolio_value:,.2f}. What else would you like to know?",
+                "That's a good question. Would you like to know about your portfolio performance, current positions, or trading strategies?",
+                "I don't have that information right now. Is there something specific about your portfolio or the market you'd like to know?"
+            ]
+            return random.choice(responses)
+    
+    # Display chat messages from history
+    for message in st.session_state.chat_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    # Accept user input
+    if prompt := st.chat_input("Ask me about your portfolio, strategies, or market trends..."):
+        # Add user message to chat history
+        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        
+        # Display user message in chat
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Generate AI response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = get_ai_response(prompt)
+                st.markdown(response)
+        
+        # Add assistant response to chat history
+        st.session_state.chat_messages.append({"role": "assistant", "content": response})
+    
+    # Add functionality explanation
+    with st.expander("About the AI Assistant"):
+        st.markdown("""
+        **AI Trading Assistant** helps you with:
+        - Portfolio information and analysis
+        - Trading strategy explanations
+        - Market insights and news
+        - Risk management advice
+        - Performance tracking
+        
+        The assistant uses your current portfolio data and market information to provide relevant answers.
+        """)
 
 # This is a Streamlit app - no extra code needed at bottom
 if __name__ == '__main__':
-    pass
+    pass 
+
+# Modular Strategy Tab
+with tab10:
+    st.markdown('<div class="sub-header">⚙️ Modular Strategy Builder</div>', unsafe_allow_html=True)
+    
+    if modular_strategy_available:
+        try:
+            # Try to use the full modular strategy UI if available
+            if modular_strategy_full:
+                logger.info("Using full modular strategy system")
+                
+                # Create marketplace and analytics instances
+                marketplace = ComponentMarketplace()
+                analytics = ComponentAnalytics()
+                
+                # Set up optimizer instances
+                optimizers = {
+                    'grid_search': GridSearchOptimizer(),
+                    'random_search': RandomSearchOptimizer()
+                }
+                
+                # Initialize UI with required components
+                strategy_ui = ModularStrategyUI(
+                    component_registry=get_component_registry(),
+                    marketplace=marketplace,
+                    analytics=analytics,
+                    optimizers=optimizers
+                )
+                
+                # Render the modular strategy UI
+                strategy_ui.render()
+            
+            # Fall back to simplified UI if full system isn't available
+            elif modular_strategy_simplified:
+                logger.info("Using simplified modular strategy UI")
+                
+                # Initialize and render simplified UI
+                simplified_ui = ModularStrategySimplifiedUI()
+                simplified_ui.render()
+                
+                # Show development note
+                st.info("You're using the simplified modular strategy UI. For full functionality, ensure all modular strategy components are installed.")
+            
+        except Exception as e:
+            st.error(f"Error initializing modular strategy system: {e}")
+            st.exception(e)
+    else:
+        st.warning("Modular strategy system is not available. Please check that all required components are installed.")
+        
+        # Show placeholder UI with explanation of modular strategy system
+        st.markdown("""
+        ## Modular Strategy System
+        
+        The modular strategy system allows you to create trading strategies by combining:
+        
+        * **Signal Generators** - Produce buy/sell signals based on indicators or patterns
+        * **Filters** - Validate signals based on market conditions
+        * **Position Sizers** - Determine optimal position size for each trade
+        * **Exit Managers** - Control when to exit positions
+        
+        The modular strategy system integrates with the event-driven architecture to provide:
+        * Component-level performance analytics
+        * Parameter optimization for strategy components
+        * Component marketplace for sharing and importing components
+        * Comprehensive testing and validation tools
+        
+        Install the required components to enable this feature.
+        """)
+
+with tab11:
+    st.markdown('<div class="sub-header">🏪 Component Marketplace</div>', unsafe_allow_html=True)
+    
+    # Description of the component marketplace
+    st.write("""
+    The Component Marketplace allows you to discover, share, and use trading components created by the community:
+    - **Browse**: Find components by type, rating, or popularity
+    - **Share**: Publish your own components for others to use
+    - **Rate & Review**: Provide feedback on components you've used
+    - **Security**: All components are signed and verified for security
+    """)
+    
+    # Check if marketplace UI components are available
+    if marketplace_ui_available:
+        try:
+            # Initialize marketplace API
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            marketplace_path = os.path.join(base_path, "marketplace")
+            
+            # Create the marketplace directory if it doesn't exist
+            os.makedirs(marketplace_path, exist_ok=True)
+            
+            # Initialize the marketplace API
+            marketplace_api = MarketplaceAPI(marketplace_path=marketplace_path)
+            
+            # Initialize and render the marketplace UI
+            marketplace_ui = MarketplaceUI(marketplace_api=marketplace_api)
+            marketplace_ui.render()
+            
+        except Exception as e:
+            st.error(f"Error initializing component marketplace: {str(e)}")
+            st.info("Please check the logs for details or contact support for assistance.")
+    else:
+        st.warning("Component marketplace is not available.")
+        st.info("""
+        The component marketplace requires additional modules to be installed. 
+        Please make sure all required components are installed or contact support for assistance.
+        """)
+
+# This is a Streamlit app - no extra code needed at bottom
+if __name__ == '__main__':
+    pass 
+with tab12:
+    st.markdown('<div class="sub-header">🎮 Trading Control</div>', unsafe_allow_html=True)
+    
+    # Description of the trading control panel
+    st.write("""
+    The Trading Control panel provides a simplified interface to configure, start, and monitor your trading bot.
+    Use this panel to:
+    - Configure your trading parameters
+    - Start and stop automated trading
+    - Monitor positions and performance in real-time
+    - View trading logs and activity
+    """)
+    
+    # Check if trading launcher is available
+    if trading_launcher_available:
+        try:
+            # Initialize and render trading launcher
+            trading_launcher = TradingLauncher()
+            trading_launcher.render()
+        except Exception as e:
+            st.error(f"Error initializing trading launcher: {str(e)}")
+            st.info("Please check the logs for details or contact support for assistance.")
+    else:
+        st.warning("Trading launcher is not available.")
+        st.info("""
+        The trading launcher requires additional modules to be installed.
+        Please make sure all required components are installed or contact support for assistance.
+        """)
