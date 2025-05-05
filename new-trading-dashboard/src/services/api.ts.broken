@@ -1,0 +1,539 @@
+import axios from 'axios';
+import { callOpenAI } from './openai-direct';
+
+// Define types for API responses
+export interface PortfolioData {
+  totalValue: number;
+  dailyChange: number;
+  dailyChangePercent: number;
+  monthlyReturn: number;
+  allocation: {
+    category: string;
+    value: number;
+    color: string;
+  }[];
+  holdings: {
+    symbol: string;
+    name: string;
+    quantity: number;
+    entryPrice: number;
+    currentPrice: number;
+    value: number;
+    unrealizedPnl: number;
+    unrealizedPnlPercent: number;
+  }[];
+}
+
+export interface TradeData {
+  id: string;
+  symbol: string;
+  type: string;
+  side: string;
+  quantity: number;
+  entryPrice: number;
+  currentPrice: number;
+  unrealizedPnl: number;
+  unrealizedPnlPercent: number;
+  strategyName: string;
+  status: string;
+  openedAt: string;
+  duration: string;
+}
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  summary: string;
+  url: string;
+  source: string;
+  imageUrl?: string;
+  publishedAt: string;
+  sentiment?: string;
+  symbols?: string[];
+  impact?: string;
+}
+
+export interface StrategyData {
+  name: string;
+  description: string;
+  status: string;
+  allocation: number;
+  performance: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+    yearly: number;
+  };
+  activeTrades: number;
+  signalStrength: number;
+  lastUpdated: string;
+}
+
+// Base API configuration for the trading bot backend
+// Based on the actual endpoints in /Users/bendickinson/Desktop/Trading:BenBot/trading_bot/api/app.py
+const API_BASE_URL = 'http://localhost:5000';
+
+// Create axios instance with common configuration
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 5000 // 5 seconds timeout - reduced to fail faster when API is unavailable
+});
+
+// Connection status tracking
+let isBackendAvailable = false;
+let lastConnectionAttempt = 0;
+const CONNECTION_RETRY_INTERVAL = 5000; // 5 seconds between reconnection attempts - more aggressive retry
+
+// Enhanced error handling interceptor
+apiClient.interceptors.response.use(
+  (response) => {
+    // Mark backend as available on successful response
+    isBackendAvailable = true;
+    return response;
+  },
+  (error) => {
+    // Track connection failure
+    isBackendAvailable = false;
+    lastConnectionAttempt = Date.now();
+    
+    // Log the error details
+    console.error('API Error:', error);
+    console.log('Using fallback mock data mode');
+    
+    return Promise.reject(error);
+  }
+);
+
+// Helper to check if we should attempt real API connection
+const shouldTryRealApi = () => {
+  // More aggressive retry approach - always try the real API
+  const shouldTry = isBackendAvailable || 
+         lastConnectionAttempt === 0 || 
+         (Date.now() - lastConnectionAttempt) > CONNECTION_RETRY_INTERVAL;
+  
+  // Always log connection attempts
+  if (shouldTry) {
+    console.log('Attempting to connect to real AI backend at: ' + API_BASE_URL);
+  }
+  
+  return shouldTry;
+};
+
+// Portfolio API methods
+export const portfolioApi = {
+  getPortfolio: async (): Promise<PortfolioData> => {
+    if (shouldTryRealApi()) {
+      try {
+        const response = await apiClient.get('/api/portfolio');
+        isBackendAvailable = true;
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching portfolio data:', error);
+        // Fall through to mock data
+      }
+    }
+    
+    // Mock data fallback
+    return {
+      totalValue: 852437.29,
+      dailyChange: 12483.57,
+      dailyChangePercent: 1.49,
+      monthlyReturn: 7.2,
+      allocation: [
+        { category: 'Stocks', value: 45, color: '#4F8BFF' },
+        { category: 'Options', value: 15, color: '#FF9800' },
+        { category: 'Crypto', value: 25, color: '#4CAF50' },
+        { category: 'Forex', value: 10, color: '#F44336' },
+        { category: 'Cash', value: 5, color: '#9E9E9E' }
+      ],
+      holdings: [
+        { symbol: 'AAPL', name: 'Apple Inc.', quantity: 150, entryPrice: 175.35, currentPrice: 192.75, value: 28912.5, unrealizedPnl: 2610.0, unrealizedPnlPercent: 9.92 },
+        { symbol: 'MSFT', name: 'Microsoft', quantity: 120, entryPrice: 310.65, currentPrice: 345.24, value: 41428.8, unrealizedPnl: 4150.8, unrealizedPnlPercent: 11.13 },
+        { symbol: 'NVDA', name: 'NVIDIA Corp', quantity: 80, entryPrice: 420.50, currentPrice: 510.35, value: 40828.0, unrealizedPnl: 7188.0, unrealizedPnlPercent: 21.37 }
+      ]
+    };
+  }
+};
+
+// Trades API methods
+export const tradesApi = {
+  getTrades: async (): Promise<TradeData[]> => {
+    if (shouldTryRealApi()) {
+      try {
+        const response = await apiClient.get('/api/trades');
+        isBackendAvailable = true;
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching trades data:', error);
+        // Fall through to mock data
+      }
+    }
+    
+    // Mock data fallback
+    return [
+      { id: 'trade-1', symbol: 'AAPL', type: 'Swing', side: 'Long', quantity: 50, entryPrice: 175.35, currentPrice: 192.75, unrealizedPnl: 870.0, unrealizedPnlPercent: 9.92, strategyName: 'MomentumStrategy', status: 'Active', openedAt: '2025-05-01T14:30:00Z', duration: '3d 4h' },
+      { id: 'trade-2', symbol: 'MSFT', type: 'Day', side: 'Long', quantity: 30, entryPrice: 310.65, currentPrice: 345.24, unrealizedPnl: 1037.70, unrealizedPnlPercent: 11.13, strategyName: 'BreakoutStrategy', status: 'Active', openedAt: '2025-05-03T10:15:00Z', duration: '1d 8h' },
+      { id: 'trade-3', symbol: 'NVDA', type: 'Position', side: 'Long', quantity: 20, entryPrice: 420.50, currentPrice: 510.35, unrealizedPnl: 1797.0, unrealizedPnlPercent: 21.37, strategyName: 'TrendFollowingStrategy', status: 'Active', openedAt: '2025-04-28T09:30:00Z', duration: '6d 9h' }
+    ];
+  }
+};
+
+// News API methods
+export const newsApi = {
+  getMarketNews: async (): Promise<NewsItem[]> => {
+    if (shouldTryRealApi()) {
+      try {
+        const response = await apiClient.get('/api/news?type=market');
+        isBackendAvailable = true;
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching market news:', error);
+        // Fall through to mock data
+      }
+    }
+    
+    // Mock data fallback
+    return [
+      { id: 'news-1', title: 'Federal Reserve Holds Interest Rates Steady', summary: 'The Federal Reserve announced today that it would maintain current interest rates, citing stable inflation data.', url: 'https://example.com/news/1', source: 'Financial Times', publishedAt: '2025-05-04T14:30:00Z', sentiment: 'Neutral', impact: 'Medium' },
+      { id: 'news-2', title: 'Tech Stocks Rally on Strong Earnings', summary: 'Major technology companies reported earnings that exceeded analyst expectations, driving a market rally.', url: 'https://example.com/news/2', source: 'CNBC', publishedAt: '2025-05-04T12:15:00Z', sentiment: 'Positive', impact: 'High' },
+      { id: 'news-3', title: 'Oil Prices Decline on Supply Concerns', summary: 'Crude oil prices fell 2% following reports of increased production from major oil-producing nations.', url: 'https://example.com/news/3', source: 'Bloomberg', publishedAt: '2025-05-04T10:45:00Z', sentiment: 'Negative', impact: 'Medium' }
+    ];
+  },
+  getSymbolNews: async (symbol: string): Promise<NewsItem[]> => {
+    if (shouldTryRealApi()) {
+      try {
+        const response = await apiClient.get(`/api/news?symbol=${symbol}`);
+        isBackendAvailable = true;
+        return response.data;
+      } catch (error) {
+        console.error(`Error fetching news for ${symbol}:`, error);
+        // Fall through to mock data
+      }
+    }
+    
+    // Mock data fallback
+    return [
+      { id: `${symbol}-news-1`, title: `${symbol} Reports Quarterly Earnings Above Expectations`, summary: `${symbol} announced quarterly earnings that exceeded analyst estimates, with revenue growth of 15% year-over-year.`, url: 'https://example.com/symbol/1', source: 'MarketWatch', publishedAt: '2025-05-04T09:30:00Z', sentiment: 'Positive', symbols: [symbol], impact: 'High' },
+      { id: `${symbol}-news-2`, title: `${symbol} Expands Into New Markets`, summary: `${symbol} announced plans to expand its operations into emerging markets, expecting to see growth in the coming quarters.`, url: 'https://example.com/symbol/2', source: 'Reuters', publishedAt: '2025-05-03T16:45:00Z', sentiment: 'Positive', symbols: [symbol], impact: 'Medium' },
+      { id: `${symbol}-news-3`, title: `Analyst Upgrades ${symbol} to 'Buy'`, summary: `Leading market analysts have upgraded ${symbol} from 'Hold' to 'Buy', citing strong growth potential and competitive advantages.`, url: 'https://example.com/symbol/3', source: 'Benzinga', publishedAt: '2025-05-02T14:20:00Z', sentiment: 'Positive', symbols: [symbol], impact: 'Medium' }
+    ];
+  }
+};
+
+// Strategies API methods
+export const strategiesApi = {
+  getStrategies: async (): Promise<StrategyData[]> => {
+    if (shouldTryRealApi()) {
+      try {
+        const response = await apiClient.get('/api/strategies');
+        isBackendAvailable = true;
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching strategies data:', error);
+        // Fall through to mock data
+      }
+    }
+    
+    // Mock data fallback
+    return [
+      { name: 'MomentumStrategy', description: 'Follows short to medium-term price momentum', status: 'Active', allocation: 25, performance: { daily: 0.8, weekly: 2.3, monthly: 5.7, yearly: 24.5 }, activeTrades: 3, signalStrength: 0.82, lastUpdated: '2025-05-04T18:30:00Z' },
+      { name: 'MeanReversionStrategy', description: 'Capitalizes on price reversals to the mean', status: 'Active', allocation: 20, performance: { daily: 0.3, weekly: 1.5, monthly: 4.2, yearly: 18.7 }, activeTrades: 2, signalStrength: 0.74, lastUpdated: '2025-05-04T18:30:00Z' },
+      { name: 'BreakoutStrategy', description: 'Identifies and trades breakouts from consolidation', status: 'Active', allocation: 20, performance: { daily: 0.5, weekly: 2.1, monthly: 6.3, yearly: 27.2 }, activeTrades: 2, signalStrength: 0.67, lastUpdated: '2025-05-04T18:30:00Z' },
+      { name: 'TrendFollowingStrategy', description: 'Long-term trend-following algorithm', status: 'Active', allocation: 15, performance: { daily: 0.2, weekly: 1.4, monthly: 3.8, yearly: 19.5 }, activeTrades: 1, signalStrength: 0.65, lastUpdated: '2025-05-04T18:30:00Z' },
+      { name: 'VolatilityEdgeStrategy', description: 'Exploits volatility patterns for profit', status: 'Active', allocation: 10, performance: { daily: 0.4, weekly: 1.8, monthly: 4.7, yearly: 22.3 }, activeTrades: 1, signalStrength: 0.58, lastUpdated: '2025-05-04T18:30:00Z' },
+      { name: 'MacroEventStrategy', description: 'Trades based on macroeconomic events', status: 'Inactive', allocation: 0, performance: { daily: 0.0, weekly: 0.0, monthly: 2.1, yearly: 12.7 }, activeTrades: 0, signalStrength: 0.0, lastUpdated: '2025-05-04T18:30:00Z' }
+    ];
+  }
+};
+
+// System logs API methods
+export const logsApi = {
+  getSystemLogs: async (limit: number = 100): Promise<any[]> => {
+    if (shouldTryRealApi()) {
+      try {
+        const response = await apiClient.get(`/api/system_logs?limit=${limit}`);
+        isBackendAvailable = true;
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching system logs:', error);
+        // Fall through to mock data
+      }
+    }
+    
+    // Mock data fallback
+    return [
+      { timestamp: '2025-05-04T19:45:23Z', level: 'INFO', component: 'StrategyManager', message: 'Running strategy evaluation cycle' },
+      { timestamp: '2025-05-04T19:45:24Z', level: 'INFO', component: 'MomentumStrategy', message: 'Generated buy signal for AAPL with confidence 0.82' },
+      { timestamp: '2025-05-04T19:45:25Z', level: 'INFO', component: 'OrderExecutor', message: 'Executed buy order for 50 shares of AAPL at $192.75' },
+      { timestamp: '2025-05-04T19:45:30Z', level: 'INFO', component: 'PortfolioManager', message: 'Updated portfolio with new position: AAPL' },
+      { timestamp: '2025-05-04T19:46:02Z', level: 'WARNING', component: 'DataProvider', message: 'Delayed market data for MSFT, using cached data' },
+      { timestamp: '2025-05-04T19:46:15Z', level: 'INFO', component: 'RiskManager', message: 'Current exposure: 45% stocks, 15% options, 25% crypto, 10% forex, 5% cash' }
+    ];
+  }
+};
+
+// AI Assistant API methods with direct OpenAI integration and intelligent fallback
+export const aiApi = {
+  sendMessage: async (message: string) => {
+    // First try direct OpenAI integration
+    try {
+      console.log('Using direct OpenAI integration...');
+      const aiResponse = await callOpenAI(message);
+      return { response: aiResponse };
+    } catch (directError) {
+      console.warn('Direct OpenAI integration failed:', directError);
+      // Fall back to backend API if direct integration fails
+    }
+
+    // Then try backend API connection if it's available
+    if (shouldTryRealApi()) {
+      try {
+        console.log('Falling back to backend API...');
+        const response = await apiClient.post('/api/ai_chat', {
+          message,
+          context: 'trading'
+        });
+        return response.data;
+      } catch (error) {
+        console.error('Error sending message to AI Assistant:', error);
+        // Fall through to mock data
+      }
+    } else {
+      console.log('Using cached mock data (backend API unavailable)');
+    }
+    
+    // Fallback mock responses with BenBot Assistant-like responses
+    const query = message.toLowerCase();
+    let mockResponse = "Hello! I'm BenBot, your trading assistant operating in simulation mode. How can I help you today? You can ask about running strategies, market analysis, trading opportunities, or portfolio status.";
+    
+    // Match intents similar to BenBotAssistant._match_intent method
+    if (query.match(/run\s+(?:the\s+)?(?:trading\s+)?(?:strategy|strategies)/i)) {
+      // Simulate _handle_run_strategy
+      const strategyMatch = query.match(/strategy|strategies\s+for\s+(.+)/i);
+      const strategyName = strategyMatch ? strategyMatch[1] : 'all active';
+      mockResponse = `I've executed the ${strategyName} trading strategies. The system has analyzed current market conditions and identified potential entry points based on your configured parameters.`;
+    } 
+    else if (query.match(/(?:what\s+is\s+)?(?:the\s+)?(?:current\s+)?market\s+(?:regime|status|analysis)/i)) {
+      // Simulate _handle_market_analysis
+      mockResponse = "Current market regime: BULLISH (confidence: 78%). Trend strength is MODERATE. Key indicators show positive momentum with decreasing volatility. Most sectors are showing constructive price action with technology and healthcare leading.";
+    } 
+    else if (query.match(/(?:show|get|find)(?:\s+me)?\s+(?:the\s+)?(?:trading\s+)?opportunities/i)) {
+      // Simulate _handle_trading_opportunities
+      mockResponse = "Here are the current trading opportunities:\n1. NVDA (MomentumStrategy, confidence: 82%)\n2. AAPL (MeanReversionStrategy, confidence: 74%)\n3. MSFT (BreakoutStrategy, confidence: 67%)\n4. AMD (TrendFollowingStrategy, confidence: 65%)\n5. TSLA (VolatilityEdgeStrategy, confidence: 58%)";
+    } 
+    else if (query.match(/(?:what\s+is\s+)?(?:the\s+)?(?:current\s+)?portfolio\s+(?:status|value|holdings)/i)) {
+    }
+  },
+
+  // Simulation mode fallback if all else fails
+  simulateResponse: (message: string) => {
+    let mockResponse = "I'm in simulation mode right now. I'll respond as if I were the real BenBot Assistant. ";
+    
+    // Simple pattern matching for common queries
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('market') || lowerMessage.includes('analysis')) {
+      mockResponse += "Based on current market conditions, I'm seeing mixed signals. Tech stocks are showing strength while financials face headwinds from interest rate uncertainty. Volume indicators suggest cautious positioning ahead of economic data releases.";
+    }
+    else if (lowerMessage.includes('portfolio') || lowerMessage.includes('holdings')) {
+      mockResponse += "Your portfolio is currently valued at $852,437.29, up 1.49% today. Your best performing asset is NVDA (+3.8%) and your largest allocation is to technology stocks (32%). Your monthly return stands at +7.2%.";
+    }
+    else if (lowerMessage.includes('strategy') || lowerMessage.includes('trade')) {
+      mockResponse += "You have 5 active strategies running, with the Momentum and Breakout strategies generating the strongest signals today. There are 12 active trades, with 8 currently in profit. The system is monitoring 3 potential new entry signals.";
+    }
+    else if (lowerMessage.includes('alert') || lowerMessage.includes('notify')) {
+      mockResponse += "I've set an alert for significant price movements on your watchlist and will notify you of any trading opportunities that match your risk profile.";
+    }
+    else {
+      // Simulate _handle_unknown_intent with better context
+      mockResponse = "I'm not sure how to help with that specific query in simulation mode. Try asking about running strategies, getting market analysis, finding trading opportunities, or checking your portfolio status. These are the core capabilities I'm simulating from your BenBot Assistant.";
+    }
+    
+    return {
+      content: mockResponse,
+      timestamp: new Date().toISOString()
+    };
+  }
+        console.error('Error fetching portfolio summary:', error);
+        // Return mock summary data
+        return {
+          totalValue: 785234.89,
+          dailyChange: 15243.67,
+          dailyChangePercent: 1.97,
+          weeklyChange: 32451.23,
+          weeklyChangePercent: 4.32,
+          monthlyReturn: 8.7,
+          ytdReturn: 24.3,
+          topPerformers: [
+            { symbol: 'NVDA', change: 12.3 },
+            { symbol: 'MSFT', change: 8.7 },
+            { symbol: 'AAPL', change: 5.2 }
+          ],
+          worstPerformers: [
+            { symbol: 'BA', change: -4.3 },
+            { symbol: 'XOM', change: -2.9 },
+            { symbol: 'JPM', change: -1.8 }
+          ]
+        };
+      }
+    } else {
+      // Return mock summary data
+      return {
+        totalValue: 785234.89,
+        dailyChange: 15243.67,
+        dailyChangePercent: 1.97,
+        weeklyChange: 32451.23,
+        weeklyChangePercent: 4.32,
+        monthlyReturn: 8.7,
+        ytdReturn: 24.3,
+        topPerformers: [
+          { symbol: 'NVDA', change: 12.3 },
+          { symbol: 'MSFT', change: 8.7 },
+          { symbol: 'AAPL', change: 5.2 }
+        ],
+        worstPerformers: [
+          { symbol: 'BA', change: -4.3 },
+          { symbol: 'XOM', change: -2.9 },
+          { symbol: 'JPM', change: -1.8 }
+        ]
+      };
+    }
+  }
+};
+
+// Market data & News API methods
+export const marketApi = {
+  getNews: async (symbol = null, category = null, limit = 20) => {
+    // Only try real API if available or time to retry
+    if (shouldTryRealApi()) {
+      try {
+        // This endpoint is defined in app.py as /api/news
+        const response = await apiClient.get('/api/news', { 
+          params: { symbol, category, limit } 
+        });
+        return response.data;
+      } catch (error) {
+        console.error('Error fetching news:', error);
+        // Fall through to mock data
+      }
+    }
+    // Return mock news data
+    return [
+      {
+        id: 'news1',
+        title: 'Fed Signals Potential Rate Cut by Year End',
+        source: 'Bloomberg',
+        time: new Date(Date.now() - 3600000).toISOString(),
+        summary: "Federal Reserve minutes revealed a more dovish stance than markets expected, with multiple board members suggesting rate cuts could begin as early as December if inflation continues to moderate.",
+        sentiment: 'Positive',
+        impact: 'High'
+      },
+      {
+        id: 'news2',
+        title: 'Tech Earnings Continue to Beat Expectations',
+        source: 'CNBC',
+        time: new Date(Date.now() - 7200000).toISOString(),
+        summary: "Tech earnings have overwhelmingly beaten analyst expectations with 82% of reports coming in above consensus, led by strong AI-related growth and cloud computing demand.",
+        sentiment: 'Positive',
+        impact: 'Medium'
+      },
+      {
+        id: 'news3',
+        title: 'Oil Prices Decline on Inventory Build',
+        source: 'Reuters',
+        time: new Date(Date.now() - 10800000).toISOString(),
+        summary: "Crude oil prices declined 2.4% following a larger than expected inventory build reported by the EIA, adding pressure to energy sector stocks already facing headwinds.",
+        sentiment: 'Negative',
+        impact: 'Medium'
+      }
+    ];
+  },
+  getSymbolData: async (symbol: string) => {
+    try {
+      // This would connect to endpoints that return symbol-specific data
+      const response = await apiClient.get(`/api/market/symbols/${symbol}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching data for ${symbol}:`, error);
+      return null;
+    }
+  }
+};
+
+// Trading strategies API methods
+export const strategyApi = {
+  getStrategies: async (status = null) => {
+    try {
+      // This endpoint is defined in app.py as /api/strategies
+      const response = await apiClient.get('/api/strategies', {
+        params: { status }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching strategies:', error);
+      return [];
+    }
+  }
+};
+
+// System logs API methods
+export const logApi = {
+  getLogs: async (limit = 50) => {
+    try {
+      // This endpoint is defined in app.py as /api/system_logs
+      const response = await apiClient.get('/api/system_logs', {
+        params: { limit }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching system logs:', error);
+      return [];
+    }
+  }
+};
+
+// Alerts and notifications
+export const alertApi = {
+  getAlerts: async (limit = 20) => {
+    try {
+      // This endpoint is defined in app.py as /api/alerts
+      const response = await apiClient.get('/api/alerts', {
+        params: { limit }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+      return [];
+    }
+  }
+};
+
+// Trade history
+export const tradeApi = {
+  getTrades: async (account = 'live', limit = 20) => {
+    try {
+      // This endpoint is defined in app.py as /api/trades
+      const response = await apiClient.get('/api/trades', {
+        params: { account, limit }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching trades:', error);
+      return [];
+    }
+  }
+};
+
+// Export default API object with all services
+export default {
+  ai: aiApi,
+  portfolio: portfolioApi,
+  market: marketApi,
+  strategy: strategyApi,
+  log: logApi,
+  alert: alertApi,
+  trade: tradeApi
+};

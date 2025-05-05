@@ -1,0 +1,405 @@
+import React, { useState, useEffect } from 'react';
+import { logsApi } from '../../services/api';
+
+interface SystemLog {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'warning' | 'error' | 'debug';
+  source: string;
+  message: string;
+  details: string;
+}
+
+const LogMonitor: React.FC = () => {
+  const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warning' | 'error' | 'debug'>('all');
+  const [logSource, setLogSource] = useState<string>('all');
+  const [isAutoScroll, setIsAutoScroll] = useState<boolean>(true);
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  
+  // Fetch system logs from API
+  useEffect(() => {
+    const fetchSystemLogs = async () => {
+      try {
+        setLoading(true);
+        const logsData = await logsApi.getSystemLogs(100); // Fetch up to 100 logs
+        
+        // Transform API data to our component format
+        const transformedLogs: SystemLog[] = logsData.map((log: any, index: number) => ({
+          id: log.id || `log-${index}`,
+          timestamp: log.timestamp || new Date().toISOString(),
+          level: (log.level || 'info').toLowerCase(),
+          source: log.component || log.source || 'system',
+          message: log.message || 'No message provided',
+          details: log.details || ''
+        }));
+        
+        setSystemLogs(transformedLogs);
+        setLastUpdated(new Date());
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching system logs:', err);
+        setError('Failed to load system logs');
+        
+        // If we don't have any logs yet, set fallback mock data
+        if (systemLogs.length === 0) {
+          setSystemLogs([
+    {
+      id: 'log-1',
+      timestamp: '2025-05-04T14:55:21.342Z',
+      level: 'info',
+      source: 'strategy_manager',
+      message: 'Strategy "Tech Momentum" successfully updated parameters',
+      details: 'Changed momentum_threshold from 0.85 to 0.92, Updated lookback period from 14 to 12'
+    },
+    {
+      id: 'log-2',
+      timestamp: '2025-05-04T14:54:45.123Z',
+      level: 'warning',
+      source: 'data_provider',
+      message: 'Rate limit approaching for Alpha Vantage API',
+      details: 'Current usage: 475/500 requests, Reset in: 35 minutes'
+    },
+    {
+      id: 'log-3',
+      timestamp: '2025-05-04T14:53:12.856Z',
+      level: 'error',
+      source: 'order_manager',
+      message: 'Failed to execute order for AMZN',
+      details: 'Error: Insufficient buying power for order size of 25 shares at $180.45'
+    },
+    {
+      id: 'log-4',
+      timestamp: '2025-05-04T14:52:02.741Z',
+      level: 'info',
+      source: 'position_manager',
+      message: 'Position opened: MSFT',
+      details: 'Bought 50 shares at $415.30, Strategy: Tech Momentum'
+    },
+    {
+      id: 'log-5',
+      timestamp: '2025-05-04T14:51:15.623Z',
+      level: 'debug',
+      source: 'risk_manager',
+      message: 'Portfolio beta calculation completed',
+      details: 'Current beta: 1.12, Previous: 1.08, Market reference: SPY'
+    },
+    {
+      id: 'log-6',
+      timestamp: '2025-05-04T14:50:30.417Z',
+      level: 'info',
+      source: 'strategy_factory',
+      message: 'New strategy generated: ML-Enhanced Mean Reversion',
+      details: 'Model confidence: 82%, Estimated Sharpe: 1.25, Estimated win rate: 58%'
+    },
+    {
+      id: 'log-7',
+      timestamp: '2025-05-04T14:49:55.219Z',
+      level: 'warning',
+      source: 'backtester',
+      message: 'Memory usage high during parallel optimization',
+      details: 'Current usage: 85%, Consider reducing parallel jobs or increasing allocated memory'
+    },
+    {
+      id: 'log-8',
+      timestamp: '2025-05-04T14:48:22.631Z',
+      level: 'error',
+      source: 'market_data',
+      message: 'Failed to retrieve options chain for TSLA',
+      details: 'API Error: 429 Too Many Requests, Retrying in 60 seconds'
+    },
+    {
+      id: 'log-9',
+      timestamp: '2025-05-04T14:47:10.842Z',
+      level: 'info',
+      source: 'ai_coordinator',
+      message: 'Market analysis completed for sector rotation',
+      details: 'Top sectors: Technology (0.85), Healthcare (0.72), Financials (0.68)'
+    },
+    {
+      id: 'log-10',
+      timestamp: '2025-05-04T14:46:05.331Z',
+      level: 'debug',
+      source: 'executor',
+      message: 'VWAP calculation updated for BTC-USD',
+      details: 'Current VWAP: 78235.45, Lookback period: 240 minutes'
+    }
+          ]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchSystemLogs();
+    
+    // Set up auto-refresh every 30 seconds
+    const intervalId = setInterval(fetchSystemLogs, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
+  
+  // Clear logs function
+  const handleClearLogs = () => {
+    setSystemLogs([]);
+    setLastUpdated(new Date());
+  };
+  
+  // Export logs function
+  const handleExportLogs = () => {
+    // Create a blob with the logs data
+    const logsJson = JSON.stringify(systemLogs, null, 2);
+    const blob = new Blob([logsJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create a link to download the logs
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `system_logs_${new Date().toISOString().replace(/:/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  };
+
+  // Filter logs based on level and source
+  const filteredLogs = systemLogs.filter(log => {
+    const levelMatch = logLevel === 'all' || log.level === logLevel;
+    const sourceMatch = logSource === 'all' || log.source === logSource;
+    return levelMatch && sourceMatch;
+  });
+
+  // Get unique sources for filter dropdown
+  const uniqueSources = Array.from(new Set(systemLogs.map(log => log.source)));
+
+  // Format timestamp
+  const formatTimestamp = (timestamp: string): string => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+  };
+
+  // Get log level badge color
+  const getLevelBadgeColor = (level: string): string => {
+    switch (level) {
+      case 'error':
+        return 'danger';
+      case 'warning':
+        return 'warning';
+      case 'info':
+        return 'info';
+      case 'debug':
+        return 'success';
+      default:
+        return 'info';
+    }
+  };
+
+  return (
+    <div className="dashboard-grid">
+      <div className="card">
+        <div className="card-header">
+          <h2>System Logs</h2>
+          <p>Real-time monitoring of system activities and events</p>
+        </div>
+        <div className="card-content">
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            marginBottom: '16px'
+          }}>
+            <div style={{ display: 'flex', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#9e9e9e' }}>
+                  Log Level
+                </label>
+                <select 
+                  value={logLevel}
+                  onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warning' | 'error' | 'debug')}
+                  style={{ 
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    padding: '8px 12px',
+                    color: 'white'
+                  }}
+                >
+                  <option value="all">All Levels</option>
+                  <option value="debug">Debug</option>
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                </select>
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#9e9e9e' }}>
+                  Source
+                </label>
+                <select 
+                  value={logSource}
+                  onChange={(e) => setLogSource(e.target.value)}
+                  style={{ 
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    padding: '8px 12px',
+                    color: 'white'
+                  }}
+                >
+                  <option value="all">All Sources</option>
+                  {uniqueSources.map((source) => (
+                    <option key={source} value={source}>{source}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+              <button
+                onClick={handleClearLogs}
+                style={{
+                  backgroundColor: '#4F8BFF',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  color: 'white',
+                  cursor: 'pointer',
+                  marginRight: '8px'
+                }}
+              >
+                Clear Logs
+              </button>
+              <button
+                onClick={handleExportLogs}
+                style={{
+                  backgroundColor: 'transparent',
+                  border: '1px solid #9e9e9e',
+                  padding: '6px 12px',
+                  borderRadius: '4px',
+                  color: '#9e9e9e',
+                  cursor: 'pointer'
+                }}
+              >
+                Export Logs
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.9rem', color: '#9e9e9e' }}>Auto-scroll</span>
+              <div 
+                style={{ 
+                  width: '40px', 
+                  height: '20px', 
+                  backgroundColor: isAutoScroll ? '#4F8BFF' : '#333',
+                  borderRadius: '10px',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.3s'
+                }}
+                onClick={() => setIsAutoScroll(!isAutoScroll)}
+              >
+                <div 
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    backgroundColor: 'white',
+                    borderRadius: '50%',
+                    position: 'absolute',
+                    top: '2px',
+                    left: isAutoScroll ? '22px' : '2px',
+                    transition: 'left 0.3s'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div style={{ 
+            backgroundColor: '#1e1e1e', 
+            borderRadius: '4px', 
+            height: '500px',
+            overflow: 'auto',
+            padding: '12px',
+            fontFamily: 'monospace',
+            fontSize: '0.9rem'
+          }}>
+            {loading && systemLogs.length === 0 ? (
+              <div style={{ color: '#9e9e9e', textAlign: 'center', padding: '20px' }}>
+                Loading system logs...
+              </div>
+            ) : error && systemLogs.length === 0 ? (
+              <div style={{ color: '#f87171', textAlign: 'center', padding: '20px' }}>
+                {error}
+              </div>
+            ) : filteredLogs.length === 0 ? (
+              <div style={{ color: '#9e9e9e', textAlign: 'center', padding: '20px' }}>
+                No logs match the current filters.
+              </div>
+            ) : (
+              filteredLogs.map((log) => (
+              <div 
+                key={log.id}
+                style={{ 
+                  padding: '8px 12px',
+                  borderBottom: '1px solid #333',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: '#9e9e9e' }}>{formatTimestamp(log.timestamp)}</span>
+                  <span className={`badge ${getLevelBadgeColor(log.level)}`}>
+                    {log.level.toUpperCase()}
+                  </span>
+                  <span style={{ 
+                    backgroundColor: '#333', 
+                    padding: '2px 6px', 
+                    borderRadius: '4px',
+                    fontSize: '0.8rem',
+                    color: '#e0e0e0'
+                  }}>
+                    {log.source}
+                  </span>
+                </div>
+                
+                <div style={{ color: '#e0e0e0' }}>
+                  {log.message}
+                </div>
+                
+                {log.details && (
+                  <div style={{ color: '#9e9e9e', fontSize: '0.85rem' }}>
+                    {log.details}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            marginTop: '12px',
+            color: '#9e9e9e',
+            fontSize: '0.9rem'
+          }}>
+            <div>
+              {filteredLogs.length} logs displayed (filtered from {systemLogs.length})
+            </div>
+            <div>
+              Last update: {lastUpdated.toLocaleTimeString()}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LogMonitor;

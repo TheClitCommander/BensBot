@@ -1,0 +1,183 @@
+import streamlit as st
+from datetime import datetime
+import pandas as pd
+import numpy as np
+
+# Set page configuration
+st.set_page_config(
+    page_title="Trading Dashboard",
+    page_icon="📈",
+    layout="wide"
+)
+
+from trading_bot.adapters.registry import AdapterRegistry
+
+# --- Shared State ---
+if "symbol" not in st.session_state:
+    st.session_state.symbol = "AAPL"
+if "timeframe" not in st.session_state:
+    st.session_state.timeframe = "1D"
+    
+# --- Mock Data Functions (Replace with real backend calls) ---
+def get_portfolio_data():
+    # Mock portfolio data
+    dates = pd.date_range(start='2025-01-01', periods=20, freq='D')
+    values = np.cumsum(np.random.normal(0, 1, 20)) + 100
+    return pd.DataFrame({'Date': dates, 'Value': values}).set_index('Date')
+
+def get_recent_trades():
+    # Mock recent trades
+    return pd.DataFrame({
+        "Symbol": ["TSLA", "AAPL", "NVDA"],
+        "Qty": [10, 25, 5],
+        "Price": [195.05, 167.22, 910.45],
+        "Date": ["05/20", "05/19", "05/18"],
+        "Type": ["Buy", "Sell", "Buy"]
+    })
+
+def get_alerts_messages():
+    # Mock alerts and messages
+    return [
+        "Alert: TSLA hit $200",
+        "Message: Order filled",
+        "Alert: AAPL earnings today",
+        "Message: Portfolio up 2.3%"
+    ]
+
+def get_news_for_symbol(symbol):
+    # Mock news data
+    return {
+        "TSLA": "Tesla @ 195.05 (05/20)\nSite: Article for sentiment & indicators for pros & layman term summary.",
+        "AAPL": "Apple @ 167.22 (05/19)\nPositive earnings report expected. Analysts bullish on services growth.",
+        "NVDA": "Nvidia @ 910.45 (05/18)\nAI demand continues to drive growth. New chip announcement next week."
+    }.get(symbol, f"No recent news for {symbol}")
+
+def get_ai_response(prompt):
+    # Mock AI response
+    return "I can help analyze your portfolio and suggest optimizations based on current market conditions."
+
+def get_experimental_strategy():
+    # Mock strategy data
+    return "Tesla @ $170 - Sell Call Spread 110 - Buy. Evidence and plan summarized here."
+
+def get_backtest_queue():
+    # Mock backtest queue
+    return "NVDA\n(Queued for backtest)"
+
+def get_current_test_stats():
+    # Mock test statistics
+    return "Tesla performed with 8.5% return over 30 days. Max drawdown: 3.2%. Sharpe: 1.8."
+
+def get_analysis_and_proposed_changes():
+    # Mock analysis
+    return "Show stats, allow adjustment, summarize changes."
+
+def get_pending_backtests():
+    # Mock pending tests
+    return "Show pending backtests or improvements."
+
+def get_winning_strategies():
+    # Mock winning strategies
+    return "List best-performing strategies."
+
+# --- Main Tabs ---
+main_tabs = st.tabs(["Dashboard", "Backtest"])
+
+# --- Dashboard Tab ---
+with main_tabs[0]:
+    st.markdown("## Dashboard")
+    
+    # Second-row navigation tabs
+    nav_tabs = st.tabs(["Dashboard", "News/Prediction", "Backtester", "Papertrade", "Live Trade"])
+    
+    # Dashboard content
+    with nav_tabs[0]:
+        # Top row: Live Portfolio | Recent Trades | Alerts & Messages
+        top_left, top_center, top_right = st.columns([2, 2, 2])
+        
+        with top_left:
+            st.markdown("#### Live Portfolio")
+            portfolio_data = get_portfolio_data()
+            st.line_chart(portfolio_data)
+        
+        with top_center:
+            st.markdown("#### Recent Trades")
+            recent_trades = get_recent_trades()
+            st.dataframe(recent_trades, hide_index=True)
+        
+        with top_right:
+            st.markdown("#### Alerts & Messages")
+            alerts = get_alerts_messages()
+            for alert in alerts:
+                st.text(alert)
+        
+        st.markdown("---")
+        
+        # Bottom row: AI Chat Assistant | News & Projection of Current Live Trades
+        bottom_left, bottom_right = st.columns([2, 4])
+        
+        with bottom_left:
+            st.markdown("#### AI Chat Assistant")
+            user_prompt = st.text_input("Ask AI Assistant:", key="ai_prompt")
+            if user_prompt:
+                ai_response = get_ai_response(user_prompt)
+                st.write(f":robot_face: {ai_response}")
+            else:
+                st.write(":robot_face: How can I help you?")
+        
+        with bottom_right:
+            st.markdown("#### News & Projection of Current Live Trades")
+            current_symbol = st.session_state.symbol
+            news = get_news_for_symbol(current_symbol)
+            st.text(news)
+            st.info(f"Prediction: {current_symbol} expected to rise 2.5% next week. Confidence: 70%.")
+
+# --- Backtest Tab ---
+with main_tabs[1]:
+    st.markdown("## Backtester")
+    
+    # Second-row navigation tabs  
+    nav_tabs = st.tabs(["Dashboard", "News/Prediction", "Backtester", "Papertrade", "Live Trade"])
+    
+    # Backtester content
+    with nav_tabs[2]:  # Pre-select the Backtester tab
+        # Experimental Strategy section
+        st.markdown("### Experimental Strategy")
+        strategy = get_experimental_strategy()
+        st.info(strategy)
+        
+        st.markdown("---")
+        
+        # Current Test and Queue for Backtest
+        upper_col, lower_col = st.columns([2, 3])
+        
+        with upper_col:
+            st.markdown("#### Queue for Backtest")
+            queue = get_backtest_queue()
+            st.write(queue)
+        
+        with lower_col:
+            st.markdown("#### Current Test / Pending")
+            test_stats = get_current_test_stats()
+            st.write(test_stats)
+            st.button("Adjust Strategy / Run Improvements", key="adjust_strategy_btn")
+        
+        st.markdown("---")
+        
+        # Bottom row: Analysis & Proposed Change | Pending | Winning Strategies
+        bottom_col1, bottom_col2, bottom_col3 = st.columns([2, 3, 2])
+        
+        with bottom_col1:
+            st.markdown("#### Analysis & Proposed Change")
+            analysis = get_analysis_and_proposed_changes()
+            st.write(analysis)
+        
+        with bottom_col2:
+            st.markdown("#### Pending")
+            pending = get_pending_backtests()
+            st.write(pending)
+        
+        with bottom_col3:
+            st.markdown("#### Winning Strategies")
+            strategies = get_winning_strategies()
+            st.write(strategies)

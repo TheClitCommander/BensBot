@@ -1,0 +1,89 @@
+metadata:
+  version: "1.0.0"
+  description: "BensBot Production Configuration"
+
+account:
+  initial_balance: 10000.0
+  paper_trading: true  # Set to false for live trading
+
+brokers:
+  enabled:
+    - alpaca
+    - tradier
+  primary: "alpaca"
+  failover: true
+  asset_routing:
+    equities: "alpaca"
+    options: "tradier"
+    default: "alpaca"
+  credentials:
+    # Credentials are loaded from environment variables
+    alpaca:
+      api_key: ${ALPACA_API_KEY}
+      api_secret: ${ALPACA_API_SECRET}
+    tradier:
+      token: ${TRADIER_API_KEY}
+      account_id: ${TRADIER_ACCOUNT_ID}
+  settings:
+    alpaca:
+      paper: ${ALPACA_PAPER}
+      api_url: "https://paper-api.alpaca.markets"  # Will change to live URL when paper is false
+    tradier:
+      sandbox: false
+
+strategy:
+  name: "momentum_breakout"
+  class: "trading_bot.strategies.momentum.BreakoutStrategy"
+  parameters:
+    lookback_period: 20
+    volatility_factor: 1.5
+    profit_target_pct: 5.0
+    stop_loss_pct: 2.0
+    rsi_period: 14
+    rsi_overbought: 70
+    rsi_oversold: 30
+    atr_period: 14
+    atr_multiplier: 2.5
+    volume_threshold: 1.5
+
+data:
+  symbols: ["AAPL", "MSFT", "GOOGL", "AMZN", "META"]
+  timeframe: "1h"
+  source: "alpaca"
+
+risk:
+  max_risk_per_trade: 1.0  # Percentage of account
+  max_concurrent_trades: 5
+  max_drawdown_pct: ${RISK_MAX_DRAWDOWN_PCT}
+  max_leverage: ${RISK_MAX_LEVERAGE}
+  position_size_limit_pct: ${RISK_POSITION_SIZE_LIMIT_PCT}
+  volatility_threshold: ${RISK_VOLATILITY_THRESHOLD}
+  cooldown_minutes: ${RISK_COOLDOWN_MINUTES}
+  margin_call_threshold: ${RISK_MARGIN_CALL_THRESHOLD}
+  margin_warning_threshold: ${RISK_MARGIN_WARNING_THRESHOLD}
+  use_trailing_stop: true
+  trailing_stop_percent: 1.5
+  take_profit_percent: 10.0
+
+persistence:
+  enabled: true
+  order_sync_interval_seconds: ${SYNC_INTERVAL_SECONDS}
+  position_sync_interval_seconds: ${SYNC_INTERVAL_SECONDS}
+  recovery:
+    enabled: ${RECOVER_ON_STARTUP}
+    open_orders: ${RECOVER_OPEN_ORDERS}
+    positions: ${RECOVER_POSITIONS}
+
+logging:
+  level: ${LOG_LEVEL}
+  file_path: "logs/trading.log"
+  console: true
+  audit_trail: true
+  performance_tracking: true
+
+dashboard:
+  enabled: true
+  admin_username: ${ADMIN_USERNAME}
+  admin_password: ${ADMIN_PASSWORD}
+  jwt_secret: ${JWT_SECRET_KEY}
+  refresh_interval_seconds: 10

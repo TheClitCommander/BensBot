@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BenBot Simple Chat</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        .chat-container {
+            width: 400px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            background-color: #3498db;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .chat-messages {
+            height: 350px;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .message-user {
+            margin-left: auto;
+            background-color: #3498db;
+            color: white;
+            border-radius: 15px 15px 0 15px;
+            padding: 10px 15px;
+        }
+        
+        .message-bot {
+            margin-right: auto;
+            background-color: white;
+            color: #2c3e50;
+            border-radius: 15px 15px 15px 0;
+            padding: 10px 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .message-timestamp {
+            font-size: 11px;
+            color: #95a5a6;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .chat-input {
+            display: flex;
+            padding: 10px;
+            background-color: white;
+            border-top: 1px solid #edf2f7;
+        }
+        
+        .chat-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+        
+        .chat-input button {
+            margin-left: 10px;
+            padding: 0 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .chat-input button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            BenBot Assistant
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <!-- Initial greeting message -->
+            <div class="message message-bot">
+                <div>Hello! I'm BenBot. How can I assist you with your trading today?</div>
+                <div class="message-timestamp">Just now</div>
+            </div>
+        </div>
+        <div class="chat-input">
+            <input type="text" id="user-message" placeholder="Type your message here..." />
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+    
+    <script>
+        // Define simple responses
+        const responses = [
+            "I recommend diversifying your portfolio across different asset classes to reduce risk.",
+            "Based on current market conditions, it might be wise to take some profits on your tech positions.",
+            "Your portfolio shows strong performance with a positive risk-adjusted return.",
+            "Consider implementing a stop-loss strategy to protect your gains in volatile markets.",
+            "The moving averages suggest a bullish trend in the market over the next few weeks.",
+            "I've analyzed your trading patterns and noticed you tend to exit positions too early. Consider letting winners run.",
+            "Market volatility has increased lately. You might want to reduce position sizes temporarily.",
+            "Dollar-cost averaging would be a good strategy in the current market environment.",
+            "Remember that consistent small gains compound better than chasing home runs in trading.",
+            "Your risk management appears solid based on your recent trades."
+        ];
+        
+        // Get DOM elements
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-message');
+        const sendButton = document.getElementById('send-button');
+        
+        // Function to add a message to the chat
+        function addMessage(text, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${isUser ? 'user' : 'bot'}`;
+            
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <div>${text}</div>
+                <div class="message-timestamp">${timestamp}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Function to send a message
+        function sendMessage() {
+            const message = userInput.value.trim();
+            if (message === '') return;
+            
+            // Add user message to chat
+            addMessage(message, true);
+            
+            // Clear input
+            userInput.value = '';
+            
+            // Simulate thinking (with a slight delay)
+            setTimeout(() => {
+                // Get a random response
+                const response = responses[Math.floor(Math.random() * responses.length)];
+                addMessage(response);
+            }, 600);
+        }
+        
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Focus input on load
+        userInput.focus();
+    </script>
+</body>
+</html> 

@@ -1,0 +1,527 @@
+import React, { useState, useEffect, FormEvent } from 'react';
+
+interface Message {
+  sender: 'user' | 'ai';
+  content: string;
+  timestamp: string;
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: string;
+  lastUpdatedAt: string;
+}
+
+const AIAssistant: React.FC = () => {
+  const [userInput, setUserInput] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string>('');
+  
+  // Initialize with a welcome message
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      sender: 'ai',
+      content: 'Good afternoon, Ben. Your portfolio is showing strong performance today with tech stocks leading the gains. How can I assist you with your trading today?',
+      timestamp: new Date().toISOString()
+    }
+  ]);
+  
+  // Load conversations from localStorage
+  useEffect(() => {
+    const savedConversations = localStorage.getItem('aiAssistantConversations');
+    if (savedConversations) {
+      const parsedConversations: Conversation[] = JSON.parse(savedConversations);
+      setConversations(parsedConversations);
+      
+      // If there are conversations, load the most recent one
+      if (parsedConversations.length > 0) {
+        const mostRecent = parsedConversations.sort((a, b) => 
+          new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime())[0];
+        setMessages(mostRecent.messages);
+        setActiveConversationId(mostRecent.id);
+      } else {
+        // If no saved conversations, create a new one
+        createNewConversation();
+      }
+    } else {
+      // If no saved conversations, create a new one
+      createNewConversation();
+    }
+  }, []);
+  
+  // Create a new conversation
+  const createNewConversation = () => {
+    const welcomeMessage: Message = {
+      sender: 'ai',
+      content: 'Good afternoon, Ben. Your portfolio is showing strong performance today with tech stocks leading the gains. How can I assist you with your trading today?',
+      timestamp: new Date().toISOString()
+    };
+    
+    const newConversation: Conversation = {
+      id: generateId(),
+      title: 'New Conversation',
+      messages: [welcomeMessage],
+      createdAt: new Date().toISOString(),
+      lastUpdatedAt: new Date().toISOString()
+    };
+    
+    const updatedConversations = [...conversations, newConversation];
+    setConversations(updatedConversations);
+    setMessages(newConversation.messages);
+    setActiveConversationId(newConversation.id);
+    
+    // Save to localStorage
+    localStorage.setItem('aiAssistantConversations', JSON.stringify(updatedConversations));
+  };
+  
+  // Generate a unique ID
+  const generateId = (): string => {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+  };
+  
+  // Update conversation title based on first user message
+  const updateConversationTitle = (userMessage: string) => {
+    if (!activeConversationId) return;
+    
+    const activeConversation = conversations.find(c => c.id === activeConversationId);
+    if (!activeConversation) return;
+    
+    // Only update title if it's still the default 'New Conversation'
+    if (activeConversation.title === 'New Conversation') {
+      // Use the first ~20 chars of user message as the title
+      const newTitle = userMessage.length > 20 
+        ? userMessage.substring(0, 20) + '...' 
+        : userMessage;
+      
+      const updatedConversations = conversations.map(c => 
+        c.id === activeConversationId 
+          ? { ...c, title: newTitle } 
+          : c
+      );
+      
+      setConversations(updatedConversations);
+      
+      // Save to localStorage
+      localStorage.setItem('aiAssistantConversations', JSON.stringify(updatedConversations));
+    }
+  };
+
+  // Simple hard-coded responses based on keywords
+  const getResponse = (input: string): string => {
+    const query = input.toLowerCase().trim();
+    
+    if (query.includes('how are my strategies') || query.includes('strategy performance')) {
+      return "Trading Strategy Performance (Last 30 Days):\n\n1. Momentum Alpha: +4.2% | Win Rate: 68% | Sharpe: 1.82 ✓ PERFORMING WELL\n2. Mean Reversion: +1.8% | Win Rate: 52% | Sharpe: 1.15 ✓ MEETING TARGETS\n3. Volatility Edge: +6.3% | Win Rate: 73% | Sharpe: 2.14 ✓ OUTPERFORMING\n4. Sector Rotation: -2.1% | Win Rate: 42% | Sharpe: 0.74 ✗ UNDERPERFORMING\n5. Pairs Trading: +0.9% | Win Rate: 51% | Sharpe: 0.96 ~ NEUTRAL\n\nOverall strategy blend is delivering alpha of +2.1% compared to benchmark. The Volatility Edge strategy is showing exceptional performance in current market conditions.";
+    } 
+    else if (query.includes('portfolio') || query.includes('holdings')) {
+      return "Your portfolio is currently up 1.49% today ($12,483.57). Tech stocks are your strongest performers - AAPL (+2.3%), MSFT (+1.8%), and NVDA (+3.2%) following positive analyst coverage on AI chip demand. Your financial sector positions are underperforming with JPM (-0.4%) and BAC (-0.8%).";
+    }
+    else if (query.includes('market') || query.includes('stocks')) {
+      return "The market is showing strength today with the S&P 500 up 0.8% and Nasdaq up 1.2%. Tech and healthcare sectors are leading gains while energy stocks are showing weakness due to declining oil prices. Trading volume is 12% above the 30-day average, suggesting strong institutional participation.";
+    }
+    else if (query.includes('recommendation') || query.includes('suggest')) {
+      return "Based on your current portfolio allocation and market conditions, I recommend considering these moves:\n\n1. Increase exposure to semiconductor stocks (AMD, AVGO, TSM) - recent supply chain improvements and AI demand create favorable conditions\n\n2. Consider taking profits on NVDA which is now 12% above our target price\n\n3. Add to your financial sector positions on weakness to improve sector balance";
+    }
+    else if (query.includes('hello') || query.includes('hi') || query.includes('hey')) {
+      return "Hello Ben! How can I help with your trading today? Would you like to review your portfolio, check market conditions, or get trading recommendations?";
+    }
+    else {
+      return "I can provide you with insights on multiple aspects of your trading and investments:\n\n- Portfolio analysis and performance\n- Market conditions and sector trends\n- Trading recommendations\n- Risk assessment\n- News impact analysis\n- Economic outlook\n\nWhat specific information would you like today?";
+    }
+  };
+
+  // Function to handle sending new messages
+  const handleSendMessage = (e: FormEvent) => {
+    e.preventDefault();
+    
+    if (!userInput.trim() || isLoading) return;
+    
+    // Update conversation title based on first user message (if it's the first)
+    if (messages.length === 1 && messages[0].sender === 'ai') {
+      updateConversationTitle(userInput);
+    }
+    
+    // Add user message
+    const userMessage: Message = {
+      sender: 'user',
+      content: userInput,
+      timestamp: new Date().toISOString()
+    };
+    const newMessages: Message[] = [...messages, userMessage];
+    
+    setMessages(newMessages);
+    setUserInput('');
+    setIsLoading(true);
+    
+    // Update the conversation in storage
+    saveMessagesToConversation(newMessages);
+    
+    // Simulate AI response with mock data
+    setTimeout(() => {
+      // Get response based on user input
+      const aiResponse = getResponse(userInput);
+      
+      // Create AI message from response
+      const aiMessage: Message = {
+        sender: 'ai',
+        content: aiResponse,
+        timestamp: new Date().toISOString()
+      };
+      
+      const updatedMessages = [...newMessages, aiMessage];
+      setMessages(updatedMessages);
+      setIsLoading(false);
+      
+      // Save the updated conversation with AI response
+      saveMessagesToConversation(updatedMessages);
+    }, 1500); // Add a realistic delay
+  };
+  
+  // Save messages to the active conversation
+  const saveMessagesToConversation = (updatedMessages: Message[]) => {
+    if (!activeConversationId) return;
+    
+    const updatedConversations = conversations.map(c => 
+      c.id === activeConversationId 
+        ? { 
+            ...c, 
+            messages: updatedMessages,
+            lastUpdatedAt: new Date().toISOString()
+          } 
+        : c
+    );
+    
+    setConversations(updatedConversations);
+    
+    // Save to localStorage
+    localStorage.setItem('aiAssistantConversations', JSON.stringify(updatedConversations));
+  };
+  
+  // Load a conversation from history
+  const loadConversation = (conversationId: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (conversation) {
+      setMessages(conversation.messages);
+      setActiveConversationId(conversationId);
+      setShowHistory(false); // Close the history panel
+    }
+  };
+  
+  // Delete a conversation
+  const deleteConversation = (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering the parent onClick
+    
+    const updatedConversations = conversations.filter(c => c.id !== conversationId);
+    setConversations(updatedConversations);
+    
+    // If we're deleting the active conversation, switch to another one or create new
+    if (conversationId === activeConversationId) {
+      if (updatedConversations.length > 0) {
+        const mostRecent = updatedConversations.sort((a, b) => 
+          new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime())[0];
+        setMessages(mostRecent.messages);
+        setActiveConversationId(mostRecent.id);
+      } else {
+        createNewConversation();
+      }
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('aiAssistantConversations', JSON.stringify(updatedConversations));
+  };
+
+  return (
+    <div style={{ 
+      backgroundColor: '#1a1a1a', 
+      borderRadius: '10px',
+      padding: '20px',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '15px',
+        color: '#e0e0e0'
+      }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Trading AI Assistant</h2>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={() => setShowHistory(!showHistory)}
+            style={{
+              backgroundColor: '#333',
+              color: '#e0e0e0',
+              border: 'none',
+              borderRadius: '5px',
+              padding: '5px 10px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '0.875rem'
+            }}
+          >
+            <span className="material-icons" style={{ fontSize: '16px' }}>
+              {showHistory ? 'close' : 'history'}
+            </span>
+            {showHistory ? 'Close History' : 'History'}
+          </button>
+          <button 
+            onClick={createNewConversation}
+            style={{
+              backgroundColor: '#4F8BFF',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              padding: '5px 10px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '0.875rem'
+            }}
+          >
+            <span className="material-icons" style={{ fontSize: '16px' }}>add</span>
+            New Chat
+          </button>
+        </div>
+      </div>
+      
+      <div style={{ 
+        display: 'flex',
+        gap: '15px',
+        height: '100%'
+      }}>
+        {/* Conversation History Sidebar */}
+        {showHistory && (
+          <div style={{
+            width: '250px',
+            backgroundColor: '#222',
+            borderRadius: '8px',
+            padding: '10px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <div style={{ fontSize: '0.875rem', color: '#999', marginBottom: '5px', padding: '0 5px' }}>
+              Previous Conversations
+            </div>
+            {conversations.length === 0 ? (
+              <div style={{ color: '#888', fontSize: '0.875rem', padding: '10px 5px' }}>
+                No previous conversations
+              </div>
+            ) : (
+              conversations
+                .sort((a, b) => new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime())
+                .map(conversation => (
+                  <div 
+                    key={conversation.id}
+                    onClick={() => loadConversation(conversation.id)}
+                    style={{
+                      backgroundColor: activeConversationId === conversation.id ? '#333' : '#2a2a2a',
+                      borderRadius: '5px',
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      color: '#e0e0e0',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderLeft: activeConversationId === conversation.id ? '3px solid #4F8BFF' : 'none',
+                    }}
+                  >
+                    <div style={{ 
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: 1
+                    }}>
+                      {conversation.title}
+                      <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '3px' }}>
+                        {new Date(conversation.lastUpdatedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => deleteConversation(conversation.id, e)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#999',
+                        cursor: 'pointer',
+                        padding: '3px',
+                        borderRadius: '3px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: 0.6
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.opacity = '0.6';
+                      }}
+                    >
+                      <span className="material-icons" style={{ fontSize: '16px' }}>delete</span>
+                    </button>
+                  </div>
+                ))
+            )}
+          </div>
+        )}
+        
+        {/* Main Chat Area */}
+        <div style={{ 
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '15px',
+          flex: 1,
+          height: '100%'
+        }}>
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            paddingRight: '5px',
+            maxHeight: '350px' // Set a max height to prevent overflow
+          }}>
+            {messages.map((message, index) => (
+              <div 
+                key={index}
+                style={{
+                  alignSelf: message.sender === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '80%',
+                  padding: '10px 15px',
+                  borderRadius: message.sender === 'user' ? '15px 15px 0 15px' : '15px 15px 15px 0',
+                  backgroundColor: message.sender === 'user' ? '#4F8BFF' : '#333',
+                  color: message.sender === 'user' ? 'white' : '#e0e0e0'
+                }}
+              >
+                <div style={{ marginBottom: '5px', fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>
+                  {message.content}
+                </div>
+                <div style={{ fontSize: '0.7rem', opacity: 0.7, textAlign: 'right' }}>
+                  {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            ))}
+            
+            {/* Loading indicator */}
+            {isLoading && (
+              <div style={{ 
+                alignSelf: 'flex-start',
+                padding: '10px 15px',
+                borderRadius: '15px 15px 15px 0',
+                backgroundColor: '#333',
+                color: '#e0e0e0',
+                fontSize: '0.875rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <span style={{ 
+                    display: 'inline-block', 
+                    width: '8px', 
+                    height: '8px', 
+                    backgroundColor: '#4F8BFF',
+                    borderRadius: '50%',
+                    animation: 'pulse 1s infinite',
+                    animationDelay: '0s'
+                  }}></span>
+                  <span style={{ 
+                    display: 'inline-block', 
+                    width: '8px', 
+                    height: '8px', 
+                    backgroundColor: '#4F8BFF',
+                    borderRadius: '50%',
+                    animation: 'pulse 1s infinite',
+                    animationDelay: '0.2s'
+                  }}></span>
+                  <span style={{ 
+                    display: 'inline-block', 
+                    width: '8px', 
+                    height: '8px', 
+                    backgroundColor: '#4F8BFF',
+                    borderRadius: '50%',
+                    animation: 'pulse 1s infinite',
+                    animationDelay: '0.4s'
+                  }}></span>
+                </div>
+                <span>AI is thinking...</span>
+              </div>
+            )}
+          </div>
+          
+          <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px' }}>
+            <input
+              type="text"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder="Ask about market conditions, portfolio suggestions, or trading ideas..."
+              disabled={isLoading}
+              style={{
+                flex: 1,
+                padding: '10px 15px',
+                borderRadius: '5px',
+                border: 'none',
+                backgroundColor: '#333',
+                color: '#e0e0e0',
+                opacity: isLoading ? 0.7 : 1
+              }}
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !userInput.trim()}
+              style={{
+                padding: '10px 15px',
+                borderRadius: '5px',
+                border: 'none',
+                backgroundColor: isLoading || !userInput.trim() ? '#666' : '#4F8BFF',
+                color: 'white',
+                cursor: isLoading || !userInput.trim() ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <span className="material-icons" style={{ fontSize: '20px' }}>
+                {isLoading ? 'hourglass_empty' : 'send'}
+              </span>
+            </button>
+          </form>
+          
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '15px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {['Market overview', 'Portfolio analysis', 'Trade suggestions', 'Risk assessment'].map((suggestion, index) => (
+                <div
+                  key={index}
+                  onClick={() => !isLoading && setUserInput(suggestion)}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: '15px',
+                    backgroundColor: '#333',
+                    color: '#e0e0e0',
+                    fontSize: '0.875rem',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                    opacity: isLoading ? 0.7 : 1
+                  }}
+                >
+                  {suggestion}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AIAssistant;

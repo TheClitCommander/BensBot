@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-color: #14191f;
+  --sidebar-bg: #0d1117;
+  --card-bg: #1c2128;
+  --accent-color: #2d81ff;
+  --text-color: #e6e6e6;
+  --border-color: #30363d;
+  --success-color: #238636;
+  --warning-color: #9e6a03;
+  --danger-color: #f85149;
+  --chart-grid: rgba(110, 118, 129, 0.1);
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+@layer components {
+  .dashboard-card {
+    @apply bg-white dark:bg-[var(--card-bg)] border border-gray-200 dark:border-[var(--border-color)] rounded-lg p-4 shadow;
+  }
+  
+  .card-title {
+    @apply text-xl font-semibold mb-4 text-gray-900 dark:text-[var(--text-color)];
+  }
+  
+  .nav-button {
+    @apply w-full text-left px-4 py-2 border-none bg-transparent text-gray-800 dark:text-[var(--text-color)] 
+    text-base cursor-pointer mb-1 rounded hover:bg-blue-50 dark:hover:bg-[rgba(45,129,255,0.1)];
+  }
+  
+  .nav-button.active {
+    @apply bg-blue-100 dark:bg-[rgba(45,129,255,0.2)] text-blue-600 dark:text-[var(--accent-color)] font-medium;
+  }
+  
+  .metric-tile {
+    @apply bg-white dark:bg-[var(--card-bg)] p-3 rounded border border-gray-200 dark:border-[var(--border-color)] text-center;
+  }
+  
+  .metric-label {
+    @apply text-gray-500 dark:text-gray-400 text-sm mb-0;
+  }
+  
+  .metric-value {
+    @apply text-gray-900 dark:text-[var(--text-color)] text-xl font-bold my-1;
+  }
+  
+  .metric-change {
+    @apply text-sm mt-0;
+  }
+  
+  .metric-change.positive {
+    @apply text-green-600 dark:text-[var(--success-color)];
+  }
+  
+  .metric-change.negative {
+    @apply text-red-600 dark:text-[var(--danger-color)];
+  }
+  
+  .account-badge {
+    @apply inline-block px-2 py-0.5 rounded text-xs font-bold ml-2 text-white;
+  }
+  
+  .badge-live {
+    @apply bg-red-500 dark:bg-[var(--danger-color)];
+  }
+  
+  .badge-paper {
+    @apply bg-yellow-500 dark:bg-[var(--warning-color)];
+  }
+  
+  .badge-backtest {
+    @apply bg-green-500 dark:bg-[var(--success-color)];
+  }
+  
+  .badge-all {
+    @apply bg-blue-500 dark:bg-[var(--accent-color)];
+  }
+}
